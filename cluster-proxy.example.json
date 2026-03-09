@@ -1,0 +1,19 @@
+{
+  "name": "My Cluster Proxy",
+  "zones": ["local.dev.mycompany.com", "mc"],
+  "clusterSuffix": ".mc.svc.cluster.local",
+  "certs": {
+    "keyFile": "~/.certs/_wildcard.local.dev.mycompany.com.keyfile.pem",
+    "certFile": "~/.certs/_wildcard.local.dev.mycompany.com.certfile.pem",
+    "mkcertDomains": ["local.dev.mycompany.com", "*.local.dev.mycompany.com"]
+  },
+  "auth": {
+    "cookieName": "session_token",
+    "endpoint": "http://auth-service.mc.svc.cluster.local/token-check",
+    "headerName": "x-auth-token"
+  },
+  "host": "127.0.0.1",
+  "httpPort": 9080,
+  "httpsPort": 9443,
+  "dnsPort": 5533
+}
