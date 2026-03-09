@@ -8,8 +8,8 @@
     "mkcertDomains": ["local.dev.mycompany.com", "*.local.dev.mycompany.com"]
   },
   "auth": {
-    "cookieName": "session_token",
-    "endpoint": "http://auth-service.mc.svc.cluster.local/token-check",
+    "cookieName": "stytch_jwt",
+    "endpoint": "http://auth-service.mc/envoy/token-check",
     "headerName": "x-auth-token"
   },
   "host": "127.0.0.1",
