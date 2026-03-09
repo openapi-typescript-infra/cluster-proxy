@@ -556,7 +556,7 @@ __metadata:
     "@types/react": ^19.2.14
     cpconfig: ^1.4.4
     dns2: ^2.1.0
-    eslint: ^9
+    eslint: ^9.39.4
     figlet: ^1.10.0
     http-proxy: ^1.18.1
     ink: ^6.8.0
@@ -2473,7 +2473,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"eslint@npm:^9, eslint@npm:^9.39.1":
+"eslint@npm:^9.39.1, eslint@npm:^9.39.4":
   version: 9.39.4
   resolution: "eslint@npm:9.39.4"
   dependencies:
