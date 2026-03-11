@@ -124,7 +124,19 @@ export async function createMainProxy({
     });
   }
 
+  // Pre-parse aliases from config into a Map for fast lookup
+  const aliases = new Map<string, URL>();
+  if (config.aliases) {
+    for (const [hostname, target] of Object.entries(config.aliases)) {
+      aliases.set(hostname, new URL(target));
+    }
+  }
+
   function getTarget(parsedUrl: URL) {
+    // Check fixed aliases first
+    if (aliases.has(parsedUrl.hostname)) {
+      return aliases.get(parsedUrl.hostname);
+    }
     const host = parsedUrl.hostname.split('.')[0];
     if (registry.has(host)) {
       return registry.get(host);

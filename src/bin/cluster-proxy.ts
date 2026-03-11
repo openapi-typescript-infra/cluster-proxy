@@ -53,16 +53,30 @@ let config: ClusterProxyConfig;
 if (argv.config) {
   config = loadConfig(argv.config);
   // CLI args override config file values
-  if (argv.host) {config.host = argv.host;}
-  if (argv.httpPort) {config.httpPort = Number(argv.httpPort);}
-  if (argv.httpsPort) {config.httpsPort = Number(argv.httpsPort);}
-  if (argv.dnsPort !== undefined) {config.dnsPort = Number(argv.dnsPort);}
-  if (argv.logLevel) {config.logLevel = argv.logLevel;}
-  if (argv.name) {config.name = argv.name;}
+  if (argv.host) {
+    config.host = argv.host;
+  }
+  if (argv.httpPort) {
+    config.httpPort = Number(argv.httpPort);
+  }
+  if (argv.httpsPort) {
+    config.httpsPort = Number(argv.httpsPort);
+  }
+  if (argv.dnsPort !== undefined) {
+    config.dnsPort = Number(argv.dnsPort);
+  }
+  if (argv.logLevel) {
+    config.logLevel = argv.logLevel;
+  }
+  if (argv.name) {
+    config.name = argv.name;
+  }
   if (argv.zone) {
     config.zones = Array.isArray(argv.zone) ? argv.zone : [argv.zone];
   }
-  if (argv.clusterSuffix) {config.clusterSuffix = argv.clusterSuffix;}
+  if (argv.clusterSuffix) {
+    config.clusterSuffix = argv.clusterSuffix;
+  }
 } else {
   // Build config entirely from CLI args
   const zones = argv.zone ? (Array.isArray(argv.zone) ? argv.zone : [argv.zone]) : undefined;

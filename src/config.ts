@@ -58,6 +58,13 @@ export interface ClusterProxyConfig {
     headerName: string;
   };
 
+  /**
+   * Fixed host aliases. Maps a full hostname to a target URL, bypassing
+   * the normal routing logic (registry lookup, cluster suffix, etc.).
+   * Example: { "foo.local.dev.mycompany.com": "https://local.dev.sesamecare.com:3000" }
+   */
+  aliases?: Record<string, string>;
+
   /** Network binding configuration (overridable via CLI args) */
   host?: string;
   httpPort?: number;

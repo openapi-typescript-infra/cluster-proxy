@@ -12,6 +12,9 @@
     "endpoint": "http://auth-service.mc/envoy/token-check",
     "headerName": "x-auth-token"
   },
+  "aliases": {
+    "foo.local.dev.mycompany.com": "https://local.dev.sesamecare.com:3000"
+  },
   "host": "127.0.0.1",
   "httpPort": 9080,
   "httpsPort": 9443,
