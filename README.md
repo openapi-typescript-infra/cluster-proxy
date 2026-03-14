@@ -94,7 +94,7 @@ All options can be set in a JSON config file passed via `--config`:
   "auth": {
     "cookieName": "session_token",
     "endpoint": "http://auth.mc.svc.cluster.local/token-check",
-    "headerName": "x-auth-token"
+    "headerNames": ["x-auth-token"]
   },
   "host": "127.0.0.1",
   "httpPort": 9080,
@@ -114,7 +114,7 @@ All options can be set in a JSON config file passed via `--config`:
 | `certs.mkcertDomains` | no | `[primaryZone, "*.primaryZone"]` | Domains passed to `mkcert` when auto-generating certificates. |
 | `auth.cookieName` | no | — | Cookie to look for on incoming requests. Auth is disabled if `auth` is not set. |
 | `auth.endpoint` | no | — | URL to call for token exchange when the cookie is present. |
-| `auth.headerName` | no | — | Response header to extract from the auth endpoint and forward upstream. |
+| `auth.headerNames` | no | — | Response headers to extract from the auth endpoint and forward upstream. |
 | `host` | no | `127.0.0.1` | Bind address. |
 | `httpPort` | no | `9080` | HTTP listen port. |
 | `httpsPort` | no | `9443` | HTTPS listen port. |

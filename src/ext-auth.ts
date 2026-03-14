@@ -16,8 +16,11 @@ export async function extAuth(req: IncomingMessage, config: ClusterProxyConfig) 
       },
       credentials: 'include',
     });
-    if (response.headers?.get(auth.headerName)) {
-      headers[auth.headerName] = response.headers.get(auth.headerName) as string;
+    for (const name of auth.headerNames) {
+      const value = response.headers?.get(name);
+      if (value) {
+        headers[name] = value;
+      }
     }
   }
   return headers;

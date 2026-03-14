@@ -54,8 +54,8 @@ export interface ClusterProxyConfig {
     cookieName: string;
     /** URL to call for token exchange */
     endpoint: string;
-    /** Response header to extract and forward (e.g. "x-auth-token") */
-    headerName: string;
+    /** Response headers to extract and forward (e.g. ["x-auth-token"]) */
+    headerNames: string[];
   };
 
   /**

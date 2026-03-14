@@ -10,7 +10,7 @@
   "auth": {
     "cookieName": "stytch_jwt",
     "endpoint": "http://auth-service.mc/envoy/token-check",
-    "headerName": "x-auth-token"
+    "headerNames": ["x-auth-token"]
   },
   "aliases": {
     "foo.local.dev.mycompany.com": "https://local.dev.sesamecare.com:3000"
