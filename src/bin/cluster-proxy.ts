@@ -273,7 +273,7 @@ createMainProxy({
           patchConsole: true,
         },
       );
-      waitUntilExit().then(() => {
+      void waitUntilExit().then(() => {
         process.exit(0);
       });
     }
