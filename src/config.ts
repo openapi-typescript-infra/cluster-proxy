@@ -65,6 +65,18 @@ export interface ClusterProxyConfig {
    */
   aliases?: Record<string, string>;
 
+  /**
+   * Path-based host mappings, similar to Envoy route tables.
+   * Maps a hostname to a set of path-prefix → service-name mappings.
+   * The first URL path segment is matched against the mapping keys, and the
+   * request is routed to the corresponding service (via registry or cluster suffix).
+   * The original path is forwarded as-is (no rewriting).
+   *
+   * Example: { "api.mycompany.com": { "myservice": "myservice-api" } }
+   * A request to api.mycompany.com/myservice/foo/bar routes to myservice-api with path /myservice/foo/bar.
+   */
+  mappedHosts?: Record<string, Record<string, string>>;
+
   /** Network binding configuration (overridable via CLI args) */
   host?: string;
   httpPort?: number;

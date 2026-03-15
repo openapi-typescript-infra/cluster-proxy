@@ -132,11 +132,35 @@ export async function createMainProxy({
     }
   }
 
+  // Pre-parse mapped hosts from config
+  const mappedHosts = new Map<string, Map<string, string>>();
+  if (config.mappedHosts) {
+    for (const [hostname, mappings] of Object.entries(config.mappedHosts)) {
+      mappedHosts.set(hostname, new Map(Object.entries(mappings)));
+    }
+  }
+
   function getTarget(parsedUrl: URL) {
     // Check fixed aliases first
     if (aliases.has(parsedUrl.hostname)) {
       return aliases.get(parsedUrl.hostname);
     }
+
+    // Check mapped hosts (path-prefix routing)
+    const hostMappings = mappedHosts.get(parsedUrl.hostname);
+    if (hostMappings) {
+      const pathSegments = parsedUrl.pathname.split('/').filter(Boolean);
+      const firstSegment = pathSegments[0];
+      if (firstSegment && hostMappings.has(firstSegment)) {
+        const serviceName = hostMappings.get(firstSegment) as string;
+        // Resolve the service name via registry, falling back to cluster suffix
+        if (registry.has(serviceName)) {
+          return registry.get(serviceName);
+        }
+        return new URL(`${parsedUrl.protocol}//${serviceName}${config.clusterSuffix}`);
+      }
+    }
+
     const host = parsedUrl.hostname.split('.')[0];
     if (registry.has(host)) {
       return registry.get(host);
