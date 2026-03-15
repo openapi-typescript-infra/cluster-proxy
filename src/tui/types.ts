@@ -7,6 +7,7 @@ export interface CapturedRequest {
   fullHost: string;
   protocol: 'http' | 'https';
   requestHeaders: Record<string, string | string[] | undefined>;
+  proxyHeaders: Record<string, string> | null;
   requestBody: Buffer | null;
   requestBodyTruncated: boolean;
   statusCode: number | null;

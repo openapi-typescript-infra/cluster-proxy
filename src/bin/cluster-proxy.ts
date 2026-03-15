@@ -27,7 +27,17 @@ import { App } from '../tui/App.js';
 
 const argv = minimist(process.argv.slice(2), {
   boolean: ['pretty', 'tui'],
-  string: ['config', 'key', 'cert', 'host', 'logLevel', 'zone', 'clusterSuffix', 'name'],
+  string: [
+    'config',
+    'key',
+    'cert',
+    'host',
+    'logLevel',
+    'zone',
+    'defaultNamespace',
+    'clusterDomain',
+    'name',
+  ],
   default: {
     pretty: true,
     tui: true,
@@ -44,7 +54,8 @@ const argv = minimist(process.argv.slice(2), {
   pretty?: boolean;
   tui?: boolean;
   zone?: string | string[];
-  clusterSuffix?: string;
+  defaultNamespace?: string;
+  clusterDomain?: string;
   name?: string;
 };
 
@@ -74,8 +85,11 @@ if (argv.config) {
   if (argv.zone) {
     config.zones = Array.isArray(argv.zone) ? argv.zone : [argv.zone];
   }
-  if (argv.clusterSuffix) {
-    config.clusterSuffix = argv.clusterSuffix;
+  if (argv.defaultNamespace) {
+    config.defaultNamespace = argv.defaultNamespace;
+  }
+  if (argv.clusterDomain) {
+    config.clusterDomain = argv.clusterDomain;
   }
 } else {
   // Build config entirely from CLI args
@@ -83,25 +97,26 @@ if (argv.config) {
   if (!zones || zones.length === 0) {
     console.error(
       'Error: At least one zone is required.\n' +
-        'Provide --config <path> or --zone <domain> [--zone <domain2>] --clusterSuffix <suffix>\n\n' +
+        'Provide --config <path> or --zone <domain> [--zone <domain2>] --defaultNamespace <ns>\n\n' +
         'Example:\n' +
-        '  cluster-proxy --zone local.dev.mycompany.com --zone mc --clusterSuffix .mc.svc.cluster.local\n\n' +
+        '  cluster-proxy --zone local.dev.mycompany.com --zone mc --defaultNamespace mc\n\n' +
         'Or with a config file:\n' +
         '  cluster-proxy --config cluster-proxy.json',
     );
     process.exit(1);
   }
-  if (!argv.clusterSuffix) {
+  if (!argv.defaultNamespace) {
     console.error(
-      'Error: --clusterSuffix is required when not using a config file.\n' +
-        'Example: --clusterSuffix .mc.svc.cluster.local',
+      'Error: --defaultNamespace is required when not using a config file.\n' +
+        'Example: --defaultNamespace mc',
     );
     process.exit(1);
   }
   config = {
     name: argv.name,
     zones,
-    clusterSuffix: argv.clusterSuffix,
+    defaultNamespace: argv.defaultNamespace,
+    clusterDomain: argv.clusterDomain,
     host: argv.host,
     httpPort: argv.httpPort ? Number(argv.httpPort) : undefined,
     httpsPort: argv.httpsPort ? Number(argv.httpsPort) : undefined,

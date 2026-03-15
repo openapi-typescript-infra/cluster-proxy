@@ -1,7 +1,8 @@
 {
   "name": "My Cluster Proxy",
   "zones": ["local.dev.mycompany.com", "mc"],
-  "clusterSuffix": ".mc.svc.cluster.local",
+  "defaultNamespace": "mc",
+  "clusterDomain": "svc.cluster.local",
   "certs": {
     "keyFile": "~/.certs/_wildcard.local.dev.mycompany.com.keyfile.pem",
     "certFile": "~/.certs/_wildcard.local.dev.mycompany.com.certfile.pem",

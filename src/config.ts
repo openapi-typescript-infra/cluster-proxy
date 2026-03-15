@@ -26,10 +26,16 @@ export interface ClusterProxyConfig {
   primaryZone?: string;
 
   /**
-   * Kubernetes cluster service suffix appended when routing single-word
-   * hostnames to the cluster. Example: ".mc.svc.cluster.local"
+   * Kubernetes namespace used when a service name has no explicit namespace.
+   * Example: "mc"
    */
-  clusterSuffix: string;
+  defaultNamespace: string;
+
+  /**
+   * Cluster DNS domain appended after the namespace.
+   * Default: "svc.cluster.local"
+   */
+  clusterDomain?: string;
 
   /** TLS certificate configuration */
   certs?: {

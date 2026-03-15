@@ -90,6 +90,12 @@ export function RequestInspector({ request, onBack, maxLines = 30 }: Props) {
   lines.push({ text: 'Request Headers', bold: true });
   lines.push({ text: formatHeaders(request.requestHeaders) });
 
+  if (request.proxyHeaders && Object.keys(request.proxyHeaders).length > 0) {
+    lines.push({ text: '' });
+    lines.push({ text: 'Added Downstream Headers', bold: true, color: 'magenta' });
+    lines.push({ text: formatHeaders(request.proxyHeaders), color: 'magenta' });
+  }
+
   if (request.requestBody && request.requestBody.length > 0) {
     lines.push({ text: '' });
     lines.push({

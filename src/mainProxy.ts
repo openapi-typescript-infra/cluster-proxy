@@ -61,6 +61,8 @@ export async function createMainProxy({
   const proxyName = config.name || 'Cluster Proxy';
   const logoText = figlet.textSync(proxyName, { font: 'Standard' });
   const primaryZone = resolvedPrimaryZone(config);
+  const defaultNamespace = config.defaultNamespace;
+  const clusterDomain = config.clusterDomain || 'svc.cluster.local';
 
   const resolveAddress = host === '0.0.0.0' ? '127.0.0.1' : (host ?? '127.0.0.1');
   const dnsServer = await createDns({
@@ -93,6 +95,10 @@ export async function createMainProxy({
     if (!store) {
       return;
     }
+    const url = req.url || '/';
+    if (url.startsWith('/_next')) {
+      return;
+    }
     const parsedHost = (req.headers.host || '').split('.')[0];
     const fullHost = req.headers.host || '';
     store.trackHost(parsedHost, fullHost, isRegistered);
@@ -111,6 +117,7 @@ export async function createMainProxy({
       fullHost,
       protocol,
       requestHeaders: { ...req.headers },
+      proxyHeaders: null,
       requestBody: null,
       requestBodyTruncated: false,
       statusCode: null,
@@ -140,6 +147,36 @@ export async function createMainProxy({
     }
   }
 
+  /**
+   * Look up a service name in the registry.
+   * For dotted names like "myservice-api.payments", tries the full name first,
+   * then falls back to the bare name ("myservice-api") since registrations are bare.
+   */
+  function registryLookup(serviceName: string): URL | undefined {
+    if (registry.has(serviceName)) {
+      return registry.get(serviceName);
+    }
+    if (serviceName.includes('.')) {
+      const bareName = serviceName.split('.')[0];
+      if (registry.has(bareName)) {
+        return registry.get(bareName);
+      }
+    }
+    return undefined;
+  }
+
+  /**
+   * Build a cluster URL for a service name.
+   * - Bare name ("myservice-api") → myservice-api.{defaultNamespace}.{clusterDomain}
+   * - Dotted name ("myservice-api.payments") → myservice-api.payments.{clusterDomain}
+   */
+  function resolveClusterUrl(serviceName: string, protocol: string): URL {
+    if (serviceName.includes('.')) {
+      return new URL(`${protocol}//${serviceName}.${clusterDomain}`);
+    }
+    return new URL(`${protocol}//${serviceName}.${defaultNamespace}.${clusterDomain}`);
+  }
+
   function getTarget(parsedUrl: URL) {
     // Check fixed aliases first
     if (aliases.has(parsedUrl.hostname)) {
@@ -153,11 +190,7 @@ export async function createMainProxy({
       const firstSegment = pathSegments[0];
       if (firstSegment && hostMappings.has(firstSegment)) {
         const serviceName = hostMappings.get(firstSegment) as string;
-        // Resolve the service name via registry, falling back to cluster suffix
-        if (registry.has(serviceName)) {
-          return registry.get(serviceName);
-        }
-        return new URL(`${parsedUrl.protocol}//${serviceName}${config.clusterSuffix}`);
+        return registryLookup(serviceName) || resolveClusterUrl(serviceName, parsedUrl.protocol);
       }
     }
 
@@ -165,7 +198,16 @@ export async function createMainProxy({
     if (registry.has(host)) {
       return registry.get(host);
     }
-    return new URL(`${parsedUrl.protocol}//${parsedUrl.hostname}${config.clusterSuffix}`);
+
+    // Strip zone suffix to get the service portion, then resolve via cluster
+    const hostname = parsedUrl.hostname;
+    const zone = config.zones.find((z) => hostname.endsWith(`.${z}`) || hostname === z);
+    const servicePart = zone ? hostname.slice(0, -(zone.length + 1)) : hostname;
+    if (!servicePart || servicePart === hostname) {
+      // No zone match or bare zone hit — use hostname as bare service name
+      return resolveClusterUrl(hostname, parsedUrl.protocol);
+    }
+    return resolveClusterUrl(servicePart, parsedUrl.protocol);
   }
 
   const proxy = httpProxy.createProxyServer({
@@ -317,6 +359,12 @@ export async function createMainProxy({
         captureRequest(req, 'https', targetUrl, registry.has(incomingUrl.hostname.split('.')[0]));
         extAuth(req, config)
           .then((headers) => {
+            if (store && Object.keys(headers).length > 0) {
+              const id = (req as unknown as Record<string, unknown>).__captureId as string;
+              if (id) {
+                store.updateRequest(id, { proxyHeaders: headers });
+              }
+            }
             logger.debug({ target, incomingUrl }, 'Proxying request');
             proxy.web(req, res, { target, headers });
           })
@@ -502,11 +550,12 @@ export async function createMainProxy({
         return;
       }
 
+      const wsId = crypto.randomUUID();
       if (store) {
         const wsHost = incomingUrl.hostname.split('.')[0];
         store.trackHost(wsHost, incomingUrl.hostname, registry.has(wsHost));
         store.addRequest({
-          id: crypto.randomUUID(),
+          id: wsId,
           timestamp: Date.now(),
           method: 'WS',
           url: req.url || '/',
@@ -514,6 +563,7 @@ export async function createMainProxy({
           fullHost: incomingUrl.hostname,
           protocol,
           requestHeaders: { ...req.headers },
+          proxyHeaders: null,
           requestBody: null,
           requestBodyTruncated: false,
           statusCode: 101,
@@ -531,6 +581,9 @@ export async function createMainProxy({
 
       extAuth(req, config)
         .then((headers) => {
+          if (store && Object.keys(headers).length > 0) {
+            store.updateRequest(wsId, { proxyHeaders: headers });
+          }
           proxy.ws(req, socket, head, { target, headers });
         })
         .catch((error) => {
