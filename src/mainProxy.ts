@@ -141,11 +141,7 @@ export async function createMainProxy({
     if (registry.has(host)) {
       return registry.get(host);
     }
-    if (host === parsedUrl.hostname) {
-      // Single host like "squirrel" - assume it goes to cluster.
-      return new URL(`${parsedUrl.protocol}//${parsedUrl.hostname}${config.clusterSuffix}`);
-    }
-    return new URL(`${parsedUrl.protocol}//${parsedUrl.hostname}`);
+    return new URL(`${parsedUrl.protocol}//${parsedUrl.hostname}${config.clusterSuffix}`);
   }
 
   const proxy = httpProxy.createProxyServer({
