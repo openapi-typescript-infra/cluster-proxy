@@ -267,8 +267,14 @@ createMainProxy({
 })
   .then(() => {
     if (useTui) {
-      render(React.createElement(App, { store, host, httpPort, httpsPort, name: proxyName }), {
-        patchConsole: true,
+      const { waitUntilExit } = render(
+        React.createElement(App, { store, host, httpPort, httpsPort, name: proxyName }),
+        {
+          patchConsole: true,
+        },
+      );
+      waitUntilExit().then(() => {
+        process.exit(0);
       });
     }
   })
