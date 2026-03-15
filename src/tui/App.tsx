@@ -115,7 +115,6 @@ export function App({ store, host, httpPort, httpsPort, name }: AppProps) {
       {/* Middle: scrolling logs / request list - takes all remaining space */}
       <Box flexGrow={1} flexShrink={1} overflow="hidden">
         <LogPanel
-          logs={state.logs}
           requests={state.filteredRequests}
           filter={state.activeFilter}
           onSelectRequest={(id) => {
