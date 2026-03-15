@@ -8,13 +8,18 @@ export async function extAuth(req: IncomingMessage, config: ClusterProxyConfig) 
   if (!auth) {
     return headers;
   }
+  const outgoing: Record<string, string> = {};
   if (req.headers.cookie && req.headers.cookie.includes(auth.cookieName)) {
+    outgoing.cookie = req.headers.cookie;
+  }
+  if (req.headers.authorization) {
+    outgoing.authorization = req.headers.authorization;
+  }
+
+  if (Object.keys(outgoing).length > 0) {
     const response = await fetch(auth.endpoint, {
       method: 'GET',
-      headers: {
-        cookie: req.headers.cookie,
-      },
-      credentials: 'include',
+      headers: outgoing,
     });
     for (const name of auth.headerNames) {
       const value = response.headers?.get(name);
