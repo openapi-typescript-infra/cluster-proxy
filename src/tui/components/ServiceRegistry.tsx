@@ -29,15 +29,17 @@ export function ServiceRegistry({ registry, seenHosts }: Props) {
           <Text bold underline>
             {'\n'}Cluster Hosts
           </Text>
-          {unregisteredHosts.map((h) => (
-            <Text key={h.host}>
-              <Text color="yellow">{h.host}</Text>
-              <Text dimColor>
-                {' '}
-                ({h.requestCount} req{h.requestCount !== 1 ? 's' : ''})
+          <Box flexDirection="row" flexWrap="wrap" columnGap={2}>
+            {unregisteredHosts.map((h) => (
+              <Text key={h.host}>
+                <Text color="yellow">{h.host}</Text>
+                <Text dimColor>
+                  {' '}
+                  ({h.requestCount} req{h.requestCount !== 1 ? 's' : ''})
+                </Text>
               </Text>
-            </Text>
-          ))}
+            ))}
+          </Box>
         </>
       )}
     </Box>
