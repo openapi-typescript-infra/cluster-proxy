@@ -374,7 +374,7 @@ createMainProxy({
 
     if (useTui) {
       const { waitUntilExit } = render(
-        React.createElement(App, { store, host, httpPort, httpsPort, name: proxyName }),
+        React.createElement(App, { store, host, httpPort, httpsPort, name: proxyName, apiPort: apiPort > 0 ? apiPort : undefined }),
         {
           patchConsole: true,
         },

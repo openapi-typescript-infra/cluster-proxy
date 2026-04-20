@@ -15,9 +15,10 @@ interface AppProps {
   httpPort: number;
   httpsPort: number;
   name?: string;
+  apiPort?: number;
 }
 
-export function App({ store, host, httpPort, httpsPort, name }: AppProps) {
+export function App({ store, host, httpPort, httpsPort, name, apiPort }: AppProps) {
   const [viewMode, setViewMode] = useState<'dashboard' | 'inspector'>('dashboard');
   const [selectedRequestId, setSelectedRequestId] = useState<string | null>(null);
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -133,6 +134,7 @@ export function App({ store, host, httpPort, httpsPort, name }: AppProps) {
           mode="dashboard"
           filter={state.activeFilter}
           requestCount={state.requests.length}
+          apiPort={apiPort}
         />
       </Box>
     </Box>
