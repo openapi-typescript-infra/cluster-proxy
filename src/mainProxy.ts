@@ -391,49 +391,169 @@ export async function createMainProxy({
         const host = req.headers.host;
         const url = req.url;
 
-        if (host?.startsWith('registry') && req.url === '/register') {
-          let body = '';
-          req.on('data', (chunk) => {
-            body += chunk.toString();
-          });
-          req.on('end', () => {
-            try {
-              const data = JSON.parse(body);
-              const { name, port, protocol } = data as {
-                name: string;
-                port: number;
-                protocol: 'http' | 'https';
-              };
-              // Remove any existing registrations using the same port
-              const portStr = String(port);
-              for (const [existingName, existingUrl] of registry.entries()) {
-                if (existingUrl.port === portStr && existingName !== name) {
-                  logger.info(
-                    { name: existingName, port },
-                    'Removing previous registration on same port',
-                  );
-                  registry.delete(existingName);
+        if (host?.startsWith('registry')) {
+          if (req.url === '/register' && req.method === 'POST') {
+            let body = '';
+            req.on('data', (chunk) => {
+              body += chunk.toString();
+            });
+            req.on('end', () => {
+              try {
+                const data = JSON.parse(body);
+                const { name, port, protocol } = data as {
+                  name: string;
+                  port: number;
+                  protocol: 'http' | 'https';
+                };
+                // Remove any existing registrations using the same port
+                const portStr = String(port);
+                for (const [existingName, existingUrl] of registry.entries()) {
+                  if (existingUrl.port === portStr && existingName !== name) {
+                    logger.info(
+                      { name: existingName, port },
+                      'Removing previous registration on same port',
+                    );
+                    registry.delete(existingName);
+                  }
                 }
-              }
-              registry.set(name, new URL(`${protocol}://${primaryZone}:${port}`));
-              logger.info({ from: name, to: registry.get(name)?.toString() }, 'Registry updated');
-              if (name.endsWith('-web')) {
-                const baseName = name.replace(/-web$/, '');
-                registry.set(baseName, new URL(`${protocol}://${primaryZone}:${port}`));
+                registry.set(name, new URL(`${protocol}://${primaryZone}:${port}`));
                 logger.info(
-                  { from: baseName, to: registry.get(name)?.toString() },
+                  { from: name, to: registry.get(name)?.toString() },
                   'Registry updated',
                 );
+                if (name.endsWith('-web')) {
+                  const baseName = name.replace(/-web$/, '');
+                  registry.set(baseName, new URL(`${protocol}://${primaryZone}:${port}`));
+                  logger.info(
+                    { from: baseName, to: registry.get(name)?.toString() },
+                    'Registry updated',
+                  );
+                }
+                syncRegistry();
+                res.statusCode = 200;
+                res.end('OK');
+              } catch (error) {
+                logger.error(error, 'Failed to parse request body');
+                res.statusCode = 400;
+                res.end('Invalid JSON');
               }
-              syncRegistry();
-              res.statusCode = 200;
-              res.end('OK');
-            } catch (error) {
-              logger.error(error, 'Failed to parse request body');
-              res.statusCode = 400;
-              res.end('Invalid JSON');
+            });
+            return;
+          }
+
+          if (req.method === 'GET') {
+            const reqUrl = new URL(req.url || '/', `http://${host}`);
+            const pathname = reqUrl.pathname;
+
+            if (pathname === '/requests') {
+              res.setHeader('Content-Type', 'application/json');
+              if (!store) {
+                res.statusCode = 503;
+                res.end('{"error":"store unavailable"}');
+                return;
+              }
+              let requests = [...store.requests].reverse(); // newest first
+              const hostFilter = reqUrl.searchParams.get('host');
+              const statusFilter = reqUrl.searchParams.get('status');
+              const methodFilter = reqUrl.searchParams.get('method');
+              const pathFilter = reqUrl.searchParams.get('path');
+              const limit = Math.max(
+                1,
+                parseInt(reqUrl.searchParams.get('limit') || '50', 10) || 50,
+              );
+
+              if (hostFilter) {requests = requests.filter((r) => r.host?.includes(hostFilter));}
+              if (statusFilter)
+                {requests = requests.filter((r) => r.statusCode === parseInt(statusFilter, 10));}
+              if (methodFilter)
+                {requests = requests.filter(
+                  (r) => r.method?.toUpperCase() === methodFilter.toUpperCase(),
+                );}
+              if (pathFilter) {requests = requests.filter((r) => r.url?.includes(pathFilter));}
+
+              // Summary view: omit headers and bodies
+              const summary = requests.slice(0, limit).map((r) => ({
+                id: r.id,
+                timestamp: r.timestamp,
+                method: r.method,
+                url: r.url,
+                host: r.host,
+                fullHost: r.fullHost,
+                protocol: r.protocol,
+                statusCode: r.statusCode,
+                duration: r.duration,
+                target: r.target,
+                isRegistered: r.isRegistered,
+                error: r.error,
+              }));
+              res.end(JSON.stringify(summary));
+              return;
             }
-          });
+
+            if (pathname.startsWith('/requests/')) {
+              res.setHeader('Content-Type', 'application/json');
+              if (!store) {
+                res.statusCode = 503;
+                res.end('{"error":"store unavailable"}');
+                return;
+              }
+              const id = pathname.slice('/requests/'.length);
+              const request = store.requests.find((r) => r.id === id);
+              if (!request) {
+                res.statusCode = 404;
+                res.end('{"error":"not found"}');
+                return;
+              }
+
+              // Buffer bodies to UTF-8 strings, capped at MAX_BODY_CAPTURE_BYTES.
+              // Binary content (images, protobuf) will produce garbled output.
+              const safeStringify = (buf: Buffer | null) => {
+                if (!buf) {return null;}
+                try {
+                  return buf.toString('utf-8').slice(0, MAX_BODY_CAPTURE_BYTES);
+                } catch {
+                  return '[binary content]';
+                }
+              };
+
+              res.end(
+                JSON.stringify({
+                  ...request,
+                  requestBody: safeStringify(request.requestBody),
+                  responseBody: safeStringify(request.responseBody),
+                  requestBodyTruncated:
+                    (request.requestBody?.length ?? 0) > MAX_BODY_CAPTURE_BYTES,
+                  responseBodyTruncated:
+                    (request.responseBody?.length ?? 0) > MAX_BODY_CAPTURE_BYTES,
+                }),
+              );
+              return;
+            }
+
+            if (pathname === '/hosts') {
+              res.setHeader('Content-Type', 'application/json');
+              if (!store) {
+                res.statusCode = 503;
+                res.end('{"error":"store unavailable"}');
+                return;
+              }
+              res.end(JSON.stringify(Object.fromEntries(store.seenHosts)));
+              return;
+            }
+
+            if (pathname === '/registry') {
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify(store?.registry ?? []));
+              return;
+            }
+          }
+
+          // Unknown control-plane path
+          res.setHeader('Content-Type', 'application/json');
+          res.statusCode = 404;
+          res.end(
+            '{"error":"not found","endpoints":["/register","/requests","/requests/:id","/hosts","/registry"]}',
+          );
           return;
         }
 
