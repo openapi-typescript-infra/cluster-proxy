@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 /* eslint-disable no-console */
 import fs from 'fs';
-import http from 'http';
 import os from 'os';
 import path from 'path';
 import { execSync } from 'child_process';
@@ -51,7 +50,6 @@ const argv = minimist(process.argv.slice(2), {
   httpPort?: string;
   httpsPort?: string;
   dnsPort?: string;
-  apiPort?: string;
   logLevel?: string;
   pretty?: boolean;
   tui?: boolean;
@@ -77,9 +75,6 @@ if (argv.config) {
   }
   if (argv.dnsPort !== undefined) {
     config.dnsPort = Number(argv.dnsPort);
-  }
-  if (argv.apiPort !== undefined) {
-    config.apiPort = Number(argv.apiPort);
   }
   if (argv.logLevel) {
     config.logLevel = argv.logLevel;
@@ -126,7 +121,6 @@ if (argv.config) {
     httpPort: argv.httpPort ? Number(argv.httpPort) : undefined,
     httpsPort: argv.httpsPort ? Number(argv.httpsPort) : undefined,
     dnsPort: argv.dnsPort !== undefined ? Number(argv.dnsPort) : undefined,
-    apiPort: argv.apiPort !== undefined ? Number(argv.apiPort) : undefined,
     logLevel: argv.logLevel,
   };
 }
@@ -272,106 +266,6 @@ createMainProxy({
   config,
 })
   .then(() => {
-    // Start the HTTP API server for programmatic access to captured traffic
-    const apiPort = config.apiPort ?? 9999;
-    if (apiPort > 0) {
-      const apiServer = http.createServer((req, res) => {
-        res.setHeader('Content-Type', 'application/json');
-
-        const url = new URL(req.url!, `http://${req.headers.host}`);
-        const pathname = url.pathname;
-
-        if (pathname === '/requests') {
-          let requests = [...store.requests].reverse(); // newest first
-          const hostFilter = url.searchParams.get('host');
-          const statusFilter = url.searchParams.get('status');
-          const methodFilter = url.searchParams.get('method');
-          const pathFilter = url.searchParams.get('path');
-          const limit = Math.max(1, parseInt(url.searchParams.get('limit') || '50', 10) || 50);
-
-          if (hostFilter) requests = requests.filter((r) => r.host?.includes(hostFilter));
-          if (statusFilter)
-            requests = requests.filter((r) => r.statusCode === parseInt(statusFilter, 10));
-          if (methodFilter)
-            requests = requests.filter(
-              (r) => r.method?.toUpperCase() === methodFilter.toUpperCase(),
-            );
-          if (pathFilter) requests = requests.filter((r) => r.url?.includes(pathFilter));
-
-          // Summary view: omit headers and bodies
-          const summary = requests.slice(0, limit).map((r) => ({
-            id: r.id,
-            timestamp: r.timestamp,
-            method: r.method,
-            url: r.url,
-            host: r.host,
-            fullHost: r.fullHost,
-            protocol: r.protocol,
-            statusCode: r.statusCode,
-            duration: r.duration,
-            target: r.target,
-            isRegistered: r.isRegistered,
-            error: r.error,
-          }));
-          res.end(JSON.stringify(summary));
-        } else if (pathname.startsWith('/requests/')) {
-          const id = pathname.slice('/requests/'.length);
-          const request = store.requests.find((r) => r.id === id);
-          if (!request) {
-            res.statusCode = 404;
-            res.end('{"error":"not found"}');
-            return;
-          }
-
-          // Buffer bodies to UTF-8 strings, capped at 256KB.
-          // Binary content (images, protobuf) will produce garbled output.
-          const safeStringify = (buf: Buffer | null) => {
-            if (!buf) return null;
-            try {
-              return buf.toString('utf-8').slice(0, 256 * 1024);
-            } catch {
-              return '[binary content]';
-            }
-          };
-
-          res.end(
-            JSON.stringify({
-              ...request,
-              requestBody: safeStringify(request.requestBody),
-              responseBody: safeStringify(request.responseBody),
-              requestBodyTruncated: (request.requestBody?.length ?? 0) > 256 * 1024,
-              responseBodyTruncated: (request.responseBody?.length ?? 0) > 256 * 1024,
-            }),
-          );
-        } else if (pathname === '/hosts') {
-          // seenHosts is a Map<string, SeenHost> -- must convert for JSON
-          res.end(JSON.stringify(Object.fromEntries(store.seenHosts)));
-        } else if (pathname === '/registry') {
-          res.end(JSON.stringify(store.registry ?? []));
-        } else {
-          res.statusCode = 404;
-          res.end(
-            '{"error":"not found","endpoints":["/requests","/requests/:id","/hosts","/registry"]}',
-          );
-        }
-      });
-
-      // Don't crash the proxy if API port is taken
-      apiServer.on('error', (err: NodeJS.ErrnoException) => {
-        if (err.code === 'EADDRINUSE') {
-          logger.warn({ port: apiPort }, 'API server port in use, continuing without API');
-        } else {
-          logger.error({ err }, 'API server error');
-        }
-      });
-
-      // unref() so the API server doesn't prevent clean exit
-      apiServer.listen(apiPort, '127.0.0.1', () => {
-        logger.info({ port: apiPort }, 'API server listening');
-      });
-      apiServer.unref();
-    }
-
     if (useTui) {
       const { waitUntilExit } = render(
         React.createElement(App, { store, host, httpPort, httpsPort, name: proxyName }),

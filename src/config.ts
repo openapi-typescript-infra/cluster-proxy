@@ -88,8 +88,6 @@ export interface ClusterProxyConfig {
   httpPort?: number;
   httpsPort?: number;
   dnsPort?: number;
-  /** Port for the HTTP API server (default: 9999, set to 0 to disable) */
-  apiPort?: number;
   logLevel?: string;
 }
 
