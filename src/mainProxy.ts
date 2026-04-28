@@ -63,6 +63,7 @@ export async function createMainProxy({
   const primaryZone = resolvedPrimaryZone(config);
   const defaultNamespace = config.defaultNamespace;
   const clusterDomain = config.clusterDomain || 'svc.cluster.local';
+  const suppressLogPaths = config.suppressLogPaths ?? ['/_next'];
 
   const resolveAddress = host === '0.0.0.0' ? '127.0.0.1' : (host ?? '127.0.0.1');
   const dnsServer = await createDns({
@@ -96,7 +97,7 @@ export async function createMainProxy({
       return;
     }
     const url = req.url || '/';
-    if (url.startsWith('/_next')) {
+    if (suppressLogPaths.some((prefix) => url.startsWith(prefix))) {
       return;
     }
     const parsedHost = (req.headers.host || '').split('.')[0];

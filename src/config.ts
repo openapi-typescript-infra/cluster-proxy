@@ -83,6 +83,14 @@ export interface ClusterProxyConfig {
    */
   mappedHosts?: Record<string, Record<string, string>>;
 
+  /**
+   * Path prefixes to exclude from request capture in the TUI/inspector.
+   * Useful for hiding noisy paths like Next.js HMR or webpack hot-reload.
+   * Defaults to ["/_next"] when omitted; pass an empty array to capture everything.
+   * Example: ["/_next", "/__webpack_hmr"]
+   */
+  suppressLogPaths?: string[];
+
   /** Network binding configuration (overridable via CLI args) */
   host?: string;
   httpPort?: number;
