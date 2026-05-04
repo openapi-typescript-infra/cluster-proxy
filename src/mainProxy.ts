@@ -418,10 +418,7 @@ export async function createMainProxy({
                   }
                 }
                 registry.set(name, new URL(`${protocol}://${primaryZone}:${port}`));
-                logger.info(
-                  { from: name, to: registry.get(name)?.toString() },
-                  'Registry updated',
-                );
+                logger.info({ from: name, to: registry.get(name)?.toString() }, 'Registry updated');
                 if (name.endsWith('-web')) {
                   const baseName = name.replace(/-web$/, '');
                   registry.set(baseName, new URL(`${protocol}://${primaryZone}:${port}`));
@@ -440,6 +437,69 @@ export async function createMainProxy({
               }
             });
             return;
+          }
+
+          if (req.method === 'DELETE') {
+            const reqUrl = new URL(req.url || '/', `http://${host}`);
+            const pathname = reqUrl.pathname;
+
+            const unregister = (name: string): boolean => {
+              const removed = registry.delete(name);
+              // Clean up the paired -web/base alias the same way auto-unregister does
+              if (name.endsWith('-web')) {
+                const baseName = name.replace(/-web$/, '');
+                if (registry.delete(baseName)) {
+                  logger.info({ name: baseName }, 'Removed paired alias');
+                }
+              } else if (registry.delete(`${name}-web`)) {
+                logger.info({ name: `${name}-web` }, 'Removed paired alias');
+              }
+              return removed;
+            };
+
+            const finish = (name: string) => {
+              if (!name) {
+                res.statusCode = 400;
+                res.end('Missing name');
+                return;
+              }
+              const removed = unregister(name);
+              if (!removed) {
+                res.statusCode = 404;
+                res.end('Not registered');
+                return;
+              }
+              logger.info({ name }, 'Registry entry removed');
+              syncRegistry();
+              res.statusCode = 200;
+              res.end('OK');
+            };
+
+            if (pathname.startsWith('/register/')) {
+              const name = decodeURIComponent(pathname.slice('/register/'.length));
+              finish(name);
+              return;
+            }
+
+            if (pathname === '/register') {
+              let body = '';
+              req.on('data', (chunk) => {
+                body += chunk.toString();
+              });
+              req.on('end', () => {
+                try {
+                  const name = body
+                    ? (JSON.parse(body) as { name: string }).name
+                    : reqUrl.searchParams.get('name') || '';
+                  finish(name);
+                } catch (error) {
+                  logger.error(error, 'Failed to parse request body');
+                  res.statusCode = 400;
+                  res.end('Invalid JSON');
+                }
+              });
+              return;
+            }
           }
 
           if (req.method === 'GET') {
@@ -463,14 +523,20 @@ export async function createMainProxy({
                 parseInt(reqUrl.searchParams.get('limit') || '50', 10) || 50,
               );
 
-              if (hostFilter) {requests = requests.filter((r) => r.host?.includes(hostFilter));}
-              if (statusFilter)
-                {requests = requests.filter((r) => r.statusCode === parseInt(statusFilter, 10));}
-              if (methodFilter)
-                {requests = requests.filter(
+              if (hostFilter) {
+                requests = requests.filter((r) => r.host?.includes(hostFilter));
+              }
+              if (statusFilter) {
+                requests = requests.filter((r) => r.statusCode === parseInt(statusFilter, 10));
+              }
+              if (methodFilter) {
+                requests = requests.filter(
                   (r) => r.method?.toUpperCase() === methodFilter.toUpperCase(),
-                );}
-              if (pathFilter) {requests = requests.filter((r) => r.url?.includes(pathFilter));}
+                );
+              }
+              if (pathFilter) {
+                requests = requests.filter((r) => r.url?.includes(pathFilter));
+              }
 
               // Summary view: omit headers and bodies
               const summary = requests.slice(0, limit).map((r) => ({
@@ -509,7 +575,9 @@ export async function createMainProxy({
               // Buffer bodies to UTF-8 strings, capped at MAX_BODY_CAPTURE_BYTES.
               // Binary content (images, protobuf) will produce garbled output.
               const safeStringify = (buf: Buffer | null) => {
-                if (!buf) {return null;}
+                if (!buf) {
+                  return null;
+                }
                 try {
                   return buf.toString('utf-8').slice(0, MAX_BODY_CAPTURE_BYTES);
                 } catch {
@@ -522,8 +590,7 @@ export async function createMainProxy({
                   ...request,
                   requestBody: safeStringify(request.requestBody),
                   responseBody: safeStringify(request.responseBody),
-                  requestBodyTruncated:
-                    (request.requestBody?.length ?? 0) > MAX_BODY_CAPTURE_BYTES,
+                  requestBodyTruncated: (request.requestBody?.length ?? 0) > MAX_BODY_CAPTURE_BYTES,
                   responseBodyTruncated:
                     (request.responseBody?.length ?? 0) > MAX_BODY_CAPTURE_BYTES,
                 }),
@@ -553,7 +620,7 @@ export async function createMainProxy({
           res.setHeader('Content-Type', 'application/json');
           res.statusCode = 404;
           res.end(
-            '{"error":"not found","endpoints":["/register","/requests","/requests/:id","/hosts","/registry"]}',
+            '{"error":"not found","endpoints":["POST /register","DELETE /register","DELETE /register/:name","/requests","/requests/:id","/hosts","/registry"]}',
           );
           return;
         }

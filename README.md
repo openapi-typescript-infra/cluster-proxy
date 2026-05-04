@@ -157,6 +157,18 @@ After registration, `my-api.local.dev.mycompany.com` routes to `localhost:8080`.
 - If a new service registers on the same port as an existing one, the old registration is replaced.
 - If the proxy gets `ECONNREFUSED` when forwarding to a registered service, it automatically unregisters and falls back to cluster routing.
 
+To unregister a service, send a DELETE to the same endpoint:
+
+```sh
+curl -X DELETE http://registry.local.dev.mycompany.com/register/my-api
+# or
+curl -X DELETE http://registry.local.dev.mycompany.com/register \
+  -H "Content-Type: application/json" \
+  -d '{"name": "my-api"}'
+```
+
+The paired `-web`/base alias (if any) is removed automatically.
+
 ## Auth token exchange
 
 When `auth` is configured, the proxy checks each HTTPS request for the specified cookie. If found, it calls the auth endpoint with the cookie and extracts the configured header from the response, forwarding it upstream. This is useful for reproducing the behavior of an auth sidecar (like Envoy) in local development.
