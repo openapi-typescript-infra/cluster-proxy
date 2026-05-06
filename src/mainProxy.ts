@@ -457,11 +457,29 @@ export async function createMainProxy({
               return removed;
             };
 
-            const finish = (name: string) => {
+            const finish = (name: string, expected?: { port?: number; protocol?: string }) => {
               if (!name) {
                 res.statusCode = 400;
                 res.end('Missing name');
                 return;
+              }
+              if (expected && (expected.port !== undefined || expected.protocol !== undefined)) {
+                const current = registry.get(name);
+                if (current) {
+                  const portMismatch =
+                    expected.port !== undefined && String(expected.port) !== current.port;
+                  const protocolMismatch =
+                    expected.protocol !== undefined && `${expected.protocol}:` !== current.protocol;
+                  if (portMismatch || protocolMismatch) {
+                    logger.warn(
+                      { name, expected, current: current.toString() },
+                      'Ignoring unregister: host info does not match current registration',
+                    );
+                    res.statusCode = 200;
+                    res.end('Ignored: registration host info mismatch');
+                    return;
+                  }
+                }
               }
               const removed = unregister(name);
               if (!removed) {
@@ -475,9 +493,19 @@ export async function createMainProxy({
               res.end('OK');
             };
 
+            const parsePort = (raw: unknown): number | undefined => {
+              if (raw === undefined || raw === null || raw === '') {
+                return undefined;
+              }
+              const n = typeof raw === 'number' ? raw : parseInt(String(raw), 10);
+              return Number.isFinite(n) ? n : undefined;
+            };
+
             if (pathname.startsWith('/register/')) {
               const name = decodeURIComponent(pathname.slice('/register/'.length));
-              finish(name);
+              const port = parsePort(reqUrl.searchParams.get('port'));
+              const protocol = reqUrl.searchParams.get('protocol') ?? undefined;
+              finish(name, { port, protocol });
               return;
             }
 
@@ -488,10 +516,18 @@ export async function createMainProxy({
               });
               req.on('end', () => {
                 try {
-                  const name = body
-                    ? (JSON.parse(body) as { name: string }).name
-                    : reqUrl.searchParams.get('name') || '';
-                  finish(name);
+                  const data = body
+                    ? (JSON.parse(body) as {
+                        name?: string;
+                        port?: number;
+                        protocol?: string;
+                      })
+                    : null;
+                  const name = data?.name ?? reqUrl.searchParams.get('name') ?? '';
+                  const port = parsePort(data?.port ?? reqUrl.searchParams.get('port'));
+                  const protocol =
+                    data?.protocol ?? reqUrl.searchParams.get('protocol') ?? undefined;
+                  finish(name, { port, protocol });
                 } catch (error) {
                   logger.error(error, 'Failed to parse request body');
                   res.statusCode = 400;

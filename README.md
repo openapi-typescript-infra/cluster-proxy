@@ -169,6 +169,16 @@ curl -X DELETE http://registry.local.dev.mycompany.com/register \
 
 The paired `-web`/base alias (if any) is removed automatically.
 
+You can optionally include `port` and/or `protocol` to guard against a stale instance unregistering a newer one. If supplied and they don't match the current registration, the request is ignored:
+
+```sh
+curl -X DELETE "http://registry.local.dev.mycompany.com/register/my-api?port=8080&protocol=http"
+# or
+curl -X DELETE http://registry.local.dev.mycompany.com/register \
+  -H "Content-Type: application/json" \
+  -d '{"name": "my-api", "port": 8080, "protocol": "http"}'
+```
+
 ## Auth token exchange
 
 When `auth` is configured, the proxy checks each HTTPS request for the specified cookie. If found, it calls the auth endpoint with the cookie and extracts the configured header from the response, forwarding it upstream. This is useful for reproducing the behavior of an auth sidecar (like Envoy) in local development.
