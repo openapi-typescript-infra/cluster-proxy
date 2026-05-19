@@ -85,6 +85,7 @@ All options can be set in a JSON config file passed via `--config`:
   "name": "My Proxy",
   "zones": ["local.dev.mycompany.com", "mc"],
   "clusterSuffix": ".mc.svc.cluster.local",
+  "usePortForwarding": true,
   "primaryZone": "local.dev.mycompany.com",
   "certs": {
     "keyFile": "~/.certs/my.keyfile.pem",
@@ -97,6 +98,7 @@ All options can be set in a JSON config file passed via `--config`:
     "headerNames": ["x-auth-token"]
   },
   "host": "127.0.0.1",
+  "advertisedHost": "127.0.0.1",
   "httpPort": 9080,
   "httpsPort": 9443,
   "dnsPort": 5533
@@ -106,7 +108,10 @@ All options can be set in a JSON config file passed via `--config`:
 | Field | Required | Default | Description |
 |-------|----------|---------|-------------|
 | `zones` | yes | — | DNS zones the proxy handles. Requests to `*.zone` are resolved and routed by the proxy. |
-| `clusterSuffix` | yes | — | Suffix appended to single-word hostnames for cluster routing (e.g. `.mc.svc.cluster.local`). |
+| `clusterSuffix` | no | — | Combined namespace/domain suffix for cluster routing (e.g. `.mc.svc.cluster.local`). The first label is used as the default namespace. |
+| `defaultNamespace` | no | `default` | Kubernetes namespace used when a service name has no explicit namespace. Ignored when `clusterSuffix` is set. |
+| `clusterDomain` | no | `svc.cluster.local` | Kubernetes cluster DNS domain appended after the namespace. Ignored when `clusterSuffix` is set. |
+| `usePortForwarding` | no | `false` | Use `kubectl port-forward` through the shell's active Kubernetes context for unregistered cluster fallback traffic. |
 | `name` | no | `"Cluster Proxy"` | Display name for the TUI logo and error pages. |
 | `primaryZone` | no | `zones[0]` | The zone used for registry URLs and default certificate paths. |
 | `certs.keyFile` | no | `~/.certs/_wildcard.<primaryZone>.keyfile.pem` | Path to TLS key file. |
@@ -116,6 +121,7 @@ All options can be set in a JSON config file passed via `--config`:
 | `auth.endpoint` | no | — | URL to call for token exchange when the cookie is present. |
 | `auth.headerNames` | no | — | Response headers to extract from the auth endpoint and forward upstream. |
 | `host` | no | `127.0.0.1` | Bind address. |
+| `advertisedHost` | no | `host`, or `127.0.0.1` when `host` is `0.0.0.0` | Address returned by the built-in DNS server for handled zones. Useful when binding to `0.0.0.0` but advertising a loopback alias such as `127.0.0.2`. |
 | `httpPort` | no | `9080` | HTTP listen port. |
 | `httpsPort` | no | `9443` | HTTPS listen port. |
 | `dnsPort` | no | `5533` | DNS listen port. Set to `0` to disable DNS. |
@@ -129,8 +135,10 @@ CLI arguments override config file values.
 --config <path>       Path to JSON config file
 --zone <domain>       DNS zone (repeatable, e.g. --zone foo.com --zone bar)
 --clusterSuffix <s>   Cluster service suffix
+--usePortForwarding   Use kubectl port-forward for cluster fallback
 --name <name>         Display name
 --host <ip>           Bind address              (default: 127.0.0.1)
+--advertisedHost <ip> DNS answer address        (default: bind host, or 127.0.0.1 for 0.0.0.0)
 --httpPort <port>     HTTP listen port          (default: 9080)
 --httpsPort <port>    HTTPS listen port         (default: 9443)
 --dnsPort <port>      DNS listen port, 0=off    (default: 5533)

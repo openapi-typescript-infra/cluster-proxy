@@ -26,16 +26,18 @@ import { createStoreDestination } from '../tui/pinoDestination.js';
 import { App } from '../tui/App.js';
 
 const argv = minimist(process.argv.slice(2), {
-  boolean: ['pretty', 'tui'],
+  boolean: ['pretty', 'tui', 'usePortForwarding'],
   string: [
     'config',
     'key',
     'cert',
     'host',
+    'advertisedHost',
     'logLevel',
     'zone',
     'defaultNamespace',
     'clusterDomain',
+    'clusterSuffix',
     'name',
   ],
   default: {
@@ -47,6 +49,7 @@ const argv = minimist(process.argv.slice(2), {
   key?: string;
   cert?: string;
   host?: string;
+  advertisedHost?: string;
   httpPort?: string;
   httpsPort?: string;
   dnsPort?: string;
@@ -56,8 +59,12 @@ const argv = minimist(process.argv.slice(2), {
   zone?: string | string[];
   defaultNamespace?: string;
   clusterDomain?: string;
+  clusterSuffix?: string;
+  usePortForwarding?: boolean;
   name?: string;
 };
+const hasFlag = (name: string) =>
+  process.argv.slice(2).some((arg) => arg === `--${name}` || arg === `--no-${name}`);
 
 // Load config file if specified, otherwise use CLI args to build config
 let config: ClusterProxyConfig;
@@ -66,6 +73,9 @@ if (argv.config) {
   // CLI args override config file values
   if (argv.host) {
     config.host = argv.host;
+  }
+  if (argv.advertisedHost) {
+    config.advertisedHost = argv.advertisedHost;
   }
   if (argv.httpPort) {
     config.httpPort = Number(argv.httpPort);
@@ -91,6 +101,12 @@ if (argv.config) {
   if (argv.clusterDomain) {
     config.clusterDomain = argv.clusterDomain;
   }
+  if (argv.clusterSuffix) {
+    config.clusterSuffix = argv.clusterSuffix;
+  }
+  if (hasFlag('usePortForwarding')) {
+    config.usePortForwarding = argv.usePortForwarding;
+  }
 } else {
   // Build config entirely from CLI args
   const zones = argv.zone ? (Array.isArray(argv.zone) ? argv.zone : [argv.zone]) : undefined;
@@ -105,9 +121,9 @@ if (argv.config) {
     );
     process.exit(1);
   }
-  if (!argv.defaultNamespace) {
+  if (!argv.defaultNamespace && !argv.clusterSuffix) {
     console.error(
-      'Error: --defaultNamespace is required when not using a config file.\n' +
+      'Error: --defaultNamespace or --clusterSuffix is required when not using a config file.\n' +
         'Example: --defaultNamespace mc',
     );
     process.exit(1);
@@ -117,7 +133,10 @@ if (argv.config) {
     zones,
     defaultNamespace: argv.defaultNamespace,
     clusterDomain: argv.clusterDomain,
+    clusterSuffix: argv.clusterSuffix,
+    usePortForwarding: argv.usePortForwarding,
     host: argv.host,
+    advertisedHost: argv.advertisedHost,
     httpPort: argv.httpPort ? Number(argv.httpPort) : undefined,
     httpsPort: argv.httpsPort ? Number(argv.httpsPort) : undefined,
     dnsPort: argv.dnsPort !== undefined ? Number(argv.dnsPort) : undefined,
@@ -143,6 +162,7 @@ const logger = useTui
 
 const homeDir = os.homedir();
 const host = config.host || '127.0.0.1';
+const advertisedHost = config.advertisedHost || (host === '0.0.0.0' ? '127.0.0.1' : host);
 const httpPort = config.httpPort || 9080;
 const httpsPort = config.httpsPort || 9443;
 const dnsPort = config.dnsPort !== undefined ? config.dnsPort : 5533;
@@ -150,6 +170,7 @@ const primaryZone = resolvedPrimaryZone(config);
 const proxyName = config.name || 'Cluster Proxy';
 
 let addedLoopbackAlias = false;
+let runningProxy: Awaited<ReturnType<typeof createMainProxy>> | undefined;
 
 function ensureLoopbackAlias(addr: string) {
   if (addr === '127.0.0.1' || !addr.startsWith('127.')) {
@@ -198,6 +219,7 @@ function ensureResolver(dnsHost: string, port: number) {
 }
 
 function cleanup() {
+  runningProxy?.portForwards?.close();
   for (const zone of config.zones) {
     try {
       fs.unlinkSync(`/etc/resolver/${zone}`);
@@ -219,9 +241,10 @@ if (!useTui && argv.pretty) {
 }
 
 ensureLoopbackAlias(host);
+ensureLoopbackAlias(advertisedHost);
 
 if (dnsPort > 0) {
-  ensureResolver(host, dnsPort);
+  ensureResolver(advertisedHost, dnsPort);
 }
 
 process.on('exit', cleanup);
@@ -265,7 +288,8 @@ createMainProxy({
   store,
   config,
 })
-  .then(() => {
+  .then((proxyInstance) => {
+    runningProxy = proxyInstance;
     if (useTui) {
       const { waitUntilExit } = render(
         React.createElement(App, { store, host, httpPort, httpsPort, name: proxyName }),

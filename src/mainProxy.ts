@@ -8,9 +8,10 @@ import httpProxy from 'http-proxy';
 import type { Logger } from 'pino';
 
 import type { ClusterProxyConfig } from './config.js';
-import { resolvedPrimaryZone } from './config.js';
+import { resolvedClusterTarget, resolvedPrimaryZone } from './config.js';
 import { createDns } from './dnsServer.js';
 import { extAuth } from './ext-auth.js';
+import { PortForwardManager } from './portForward.js';
 import type { ProxyStore } from './tui/store.js';
 import { MAX_BODY_CAPTURE_BYTES } from './tui/store.js';
 
@@ -61,11 +62,12 @@ export async function createMainProxy({
   const proxyName = config.name || 'Cluster Proxy';
   const logoText = figlet.textSync(proxyName, { font: 'Standard' });
   const primaryZone = resolvedPrimaryZone(config);
-  const defaultNamespace = config.defaultNamespace;
-  const clusterDomain = config.clusterDomain || 'svc.cluster.local';
+  const { defaultNamespace, clusterDomain } = resolvedClusterTarget(config);
   const suppressLogPaths = config.suppressLogPaths ?? ['/_next'];
+  const portForwards = config.usePortForwarding ? new PortForwardManager(logger) : undefined;
 
-  const resolveAddress = host === '0.0.0.0' ? '127.0.0.1' : (host ?? '127.0.0.1');
+  const resolveAddress =
+    config.advertisedHost || (host === '0.0.0.0' ? '127.0.0.1' : (host ?? '127.0.0.1'));
   const dnsServer = await createDns({
     host: host ?? '127.0.0.1',
     dnsPort,
@@ -178,7 +180,25 @@ export async function createMainProxy({
     return new URL(`${protocol}//${serviceName}.${defaultNamespace}.${clusterDomain}`);
   }
 
-  function getTarget(parsedUrl: URL) {
+  async function resolveClusterTargetUrl(serviceName: string, parsedUrl: URL): Promise<URL> {
+    if (!portForwards) {
+      return resolveClusterUrl(serviceName, parsedUrl.protocol);
+    }
+
+    const [name, namespace] = serviceName.includes('.')
+      ? serviceName.split('.', 2)
+      : [serviceName, defaultNamespace];
+    const servicePort = Number(parsedUrl.port) || (parsedUrl.protocol === 'https:' ? 443 : 80);
+
+    return portForwards.getUrl({
+      namespace,
+      serviceName: name,
+      servicePort,
+      protocol: parsedUrl.protocol,
+    });
+  }
+
+  async function getTarget(parsedUrl: URL) {
     // Check fixed aliases first
     if (aliases.has(parsedUrl.hostname)) {
       return aliases.get(parsedUrl.hostname);
@@ -191,7 +211,7 @@ export async function createMainProxy({
       const firstSegment = pathSegments[0];
       if (firstSegment && hostMappings.has(firstSegment)) {
         const serviceName = hostMappings.get(firstSegment) as string;
-        return registryLookup(serviceName) || resolveClusterUrl(serviceName, parsedUrl.protocol);
+        return registryLookup(serviceName) || resolveClusterTargetUrl(serviceName, parsedUrl);
       }
     }
 
@@ -206,9 +226,9 @@ export async function createMainProxy({
     const servicePart = zone ? hostname.slice(0, -(zone.length + 1)) : hostname;
     if (!servicePart || servicePart === hostname) {
       // No zone match or bare zone hit — use hostname as bare service name
-      return resolveClusterUrl(hostname, parsedUrl.protocol);
+      return resolveClusterTargetUrl(hostname, parsedUrl);
     }
-    return resolveClusterUrl(servicePart, parsedUrl.protocol);
+    return resolveClusterTargetUrl(servicePart, parsedUrl);
   }
 
   const proxy = httpProxy.createProxyServer({
@@ -334,7 +354,7 @@ export async function createMainProxy({
   });
 
   const httpsServer = https
-    .createServer({ key, cert }, function (req, res) {
+    .createServer({ key, cert }, async function (req, res) {
       req.socket.on('error', (error) => {
         logger.warn(error, 'https socket error');
       });
@@ -346,7 +366,7 @@ export async function createMainProxy({
           throw new Error('No host in request to ' + url);
         }
         const incomingUrl = new URL(req.url as string, 'https://' + host);
-        const target = getTarget(incomingUrl);
+        const target = await getTarget(incomingUrl);
         const targetUrl = target instanceof URL ? target : target ? new URL(target) : undefined;
         if (targetUrl && targetUrl.origin === incomingUrl.origin) {
           logger.warn(
@@ -383,7 +403,7 @@ export async function createMainProxy({
     });
 
   const httpServer = http
-    .createServer({}, function (req, res) {
+    .createServer({}, async function (req, res) {
       try {
         req.socket.on('error', (error) => {
           logger.warn(error, 'http socket error');
@@ -665,7 +685,7 @@ export async function createMainProxy({
           throw new Error('No host in request to ' + url);
         }
         const incomingUrl = new URL(req.url as string, 'http://' + host);
-        const target = getTarget(incomingUrl);
+        const target = await getTarget(incomingUrl);
         const targetUrl = target instanceof URL ? target : target ? new URL(target) : undefined;
         if (targetUrl && targetUrl.origin === incomingUrl.origin) {
           logger.warn(
@@ -692,12 +712,25 @@ export async function createMainProxy({
     return { host: url.hostname, port: Number(url.port || 443) };
   };
 
-  httpsServer.on('connect', function (req, socket) {
+  httpsServer.on('connect', async function (req, socket) {
     const originalUrl = new URL(`https://${req.url}`);
-    const { host, port } = getHostAndPort(originalUrl);
+    let { host, port } = getHostAndPort(originalUrl);
 
     if (store) {
       store.trackHost(host, originalUrl.hostname, registry.has(host));
+    }
+
+    try {
+      const target = await getTarget(originalUrl);
+      const targetUrl = target instanceof URL ? target : target ? new URL(target) : undefined;
+      if (targetUrl) {
+        host = targetUrl.hostname;
+        port = Number(targetUrl.port) || port;
+      }
+    } catch (error) {
+      logger.warn(error, 'Failed to resolve TLS connect target');
+      socket.destroy();
+      return;
     }
 
     if (originalUrl.hostname !== host) {
@@ -745,7 +778,7 @@ export async function createMainProxy({
     logger.error(err, describeListenError(err, 'http', host, httpPort));
   });
 
-  function handleWebsocketUpgrade(
+  async function handleWebsocketUpgrade(
     req: http.IncomingMessage,
     socket: net.Socket,
     head: Buffer,
@@ -762,7 +795,7 @@ export async function createMainProxy({
       }
 
       const incomingUrl = new URL(req.url ?? '', `${protocol}://${host}`);
-      const target = getTarget(incomingUrl);
+      const target = await getTarget(incomingUrl);
       const targetUrl = target instanceof URL ? target : target ? new URL(target) : undefined;
 
       if (targetUrl && targetUrl.origin === incomingUrl.origin) {
@@ -821,12 +854,12 @@ export async function createMainProxy({
   }
 
   httpsServer.on('upgrade', (req, socket, head) => {
-    handleWebsocketUpgrade(req, socket as unknown as net.Socket, head, 'https');
+    void handleWebsocketUpgrade(req, socket as unknown as net.Socket, head, 'https');
   });
 
   httpServer.on('upgrade', (req, socket, head) => {
-    handleWebsocketUpgrade(req, socket as unknown as net.Socket, head, 'http');
+    void handleWebsocketUpgrade(req, socket as unknown as net.Socket, head, 'http');
   });
 
-  return { proxy, httpsServer, httpServer, dnsServer };
+  return { proxy, httpsServer, httpServer, dnsServer, portForwards };
 }
