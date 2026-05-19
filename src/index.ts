@@ -11,6 +11,7 @@ export type { ClusterProxyConfig } from './config.js';
 export {
   loadConfig,
   resolvedPrimaryZone,
+  resolvedClusterTarget,
   defaultCertPaths,
   defaultMkcertDomains,
 } from './config.js';

@@ -3,6 +3,7 @@
   "zones": ["local.dev.mycompany.com", "mc"],
   "defaultNamespace": "mc",
   "clusterDomain": "svc.cluster.local",
+  "usePortForwarding": false,
   "certs": {
     "keyFile": "~/.certs/_wildcard.local.dev.mycompany.com.keyfile.pem",
     "certFile": "~/.certs/_wildcard.local.dev.mycompany.com.certfile.pem",
@@ -23,6 +24,7 @@
     }
   },
   "host": "127.0.0.1",
+  "advertisedHost": "127.0.0.1",
   "httpPort": 9080,
   "httpsPort": 9443,
   "dnsPort": 5533

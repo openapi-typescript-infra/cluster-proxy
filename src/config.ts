@@ -29,13 +29,27 @@ export interface ClusterProxyConfig {
    * Kubernetes namespace used when a service name has no explicit namespace.
    * Example: "mc"
    */
-  defaultNamespace: string;
+  defaultNamespace?: string;
 
   /**
    * Cluster DNS domain appended after the namespace.
    * Default: "svc.cluster.local"
    */
   clusterDomain?: string;
+
+  /**
+   * Legacy combined Kubernetes suffix in the form "<namespace>.svc.cluster.local".
+   * When set, the first label is used as the namespace and the remaining labels
+   * are used as the cluster domain.
+   */
+  clusterSuffix?: string;
+
+  /**
+   * When enabled, unregistered cluster fallback traffic is sent through
+   * `kubectl port-forward` using the shell's active Kubernetes context instead
+   * of resolving and connecting to cluster DNS directly.
+   */
+  usePortForwarding?: boolean;
 
   /** TLS certificate configuration */
   certs?: {
@@ -93,6 +107,11 @@ export interface ClusterProxyConfig {
 
   /** Network binding configuration (overridable via CLI args) */
   host?: string;
+  /**
+   * Address returned by the built-in DNS server for handled zones.
+   * Defaults to the bind host, except 0.0.0.0 advertises 127.0.0.1.
+   */
+  advertisedHost?: string;
   httpPort?: number;
   httpsPort?: number;
   dnsPort?: number;
@@ -106,6 +125,24 @@ export function loadConfig(configPath: string): ClusterProxyConfig {
 
 export function resolvedPrimaryZone(config: ClusterProxyConfig): string {
   return config.primaryZone || config.zones[0];
+}
+
+export function resolvedClusterTarget(config: ClusterProxyConfig) {
+  if (config.clusterSuffix) {
+    const suffix = config.clusterSuffix.replace(/^\./, '');
+    const parts = suffix.split('.').filter(Boolean);
+    if (parts.length > 1) {
+      return {
+        defaultNamespace: parts[0],
+        clusterDomain: parts.slice(1).join('.'),
+      };
+    }
+  }
+
+  return {
+    defaultNamespace: config.defaultNamespace || 'default',
+    clusterDomain: config.clusterDomain || 'svc.cluster.local',
+  };
 }
 
 export function expandHomePath(filePath: string, homeDir = os.homedir()): string {
