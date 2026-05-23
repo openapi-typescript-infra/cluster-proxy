@@ -13,7 +13,17 @@ import { createDns } from './dnsServer.js';
 import { extAuth } from './ext-auth.js';
 import { PortForwardManager } from './portForward.js';
 import type { ProxyStore } from './tui/store.js';
-import { MAX_BODY_CAPTURE_BYTES } from './tui/store.js';
+
+const DEFAULT_BODY_CAPTURE_CONTENT_TYPES = [
+  'application/json',
+  'application/problem+json',
+  'application/x-www-form-urlencoded',
+  'application/xml',
+  'application/graphql',
+  'text/',
+  '+json',
+  '+xml',
+];
 
 function errorOrSimpleDesc(error: Error, extra: Record<string, unknown> = {}) {
   const { code } = error as { code?: string };
@@ -64,6 +74,9 @@ export async function createMainProxy({
   const registerHost = resolvedRegisterHost(config);
   const { defaultNamespace, clusterDomain } = resolvedClusterTarget(config);
   const suppressLogPaths = config.suppressLogPaths ?? ['/_next'];
+  const inspectRequests = config.inspectRequests !== false;
+  const bodyCaptureContentTypes =
+    config.bodyCaptureContentTypes ?? DEFAULT_BODY_CAPTURE_CONTENT_TYPES;
   const portForwards = config.usePortForwarding ? new PortForwardManager(logger) : undefined;
 
   const resolveAddress =
@@ -95,7 +108,7 @@ export async function createMainProxy({
     target: URL | undefined,
     isRegistered: boolean,
   ) {
-    if (!store) {
+    if (!store || !inspectRequests) {
       return;
     }
     const url = req.url || '/';
@@ -131,6 +144,36 @@ export async function createMainProxy({
       target: target?.toString() || 'unknown',
       isRegistered,
       error: null,
+    });
+  }
+
+  function shouldCaptureBody(headers: http.IncomingHttpHeaders): boolean {
+    if (!store || store.maxBodyCaptureBytes <= 0) {
+      return false;
+    }
+    const contentLength = headers['content-length'];
+    const length =
+      typeof contentLength === 'string' ? Number.parseInt(contentLength, 10) : Number.NaN;
+    if (Number.isFinite(length) && length > store.maxBodyCaptureBytes) {
+      return false;
+    }
+
+    const rawContentType = headers['content-type'];
+    const contentType = Array.isArray(rawContentType) ? rawContentType[0] : rawContentType;
+    if (!contentType) {
+      return true;
+    }
+
+    const normalized = contentType.split(';', 1)[0].trim().toLowerCase();
+    return bodyCaptureContentTypes.some((pattern) => {
+      const lowerPattern = pattern.toLowerCase();
+      if (lowerPattern.endsWith('/')) {
+        return normalized.startsWith(lowerPattern);
+      }
+      if (lowerPattern.startsWith('+')) {
+        return normalized.endsWith(lowerPattern);
+      }
+      return normalized === lowerPattern;
     });
   }
 
@@ -247,12 +290,16 @@ export async function createMainProxy({
       return;
     }
 
+    if (!shouldCaptureBody(req.headers)) {
+      return;
+    }
+
     const bodyChunks: Buffer[] = [];
     let totalSize = 0;
     let truncated = false;
 
     req.on('data', (chunk: Buffer) => {
-      if (!truncated && totalSize + chunk.length <= MAX_BODY_CAPTURE_BYTES) {
+      if (!truncated && totalSize + chunk.length <= store.maxBodyCaptureBytes) {
         bodyChunks.push(chunk);
         totalSize += chunk.length;
       } else {
@@ -282,12 +329,16 @@ export async function createMainProxy({
       return;
     }
 
+    const captureResponseBody = shouldCaptureBody(proxyRes.headers);
     const bodyChunks: Buffer[] = [];
     let totalSize = 0;
     let truncated = false;
 
     proxyRes.on('data', (chunk: Buffer) => {
-      if (!truncated && totalSize + chunk.length <= MAX_BODY_CAPTURE_BYTES) {
+      if (!captureResponseBody) {
+        return;
+      }
+      if (!truncated && totalSize + chunk.length <= store.maxBodyCaptureBytes) {
         bodyChunks.push(chunk);
         totalSize += chunk.length;
       } else {
@@ -299,7 +350,8 @@ export async function createMainProxy({
       store.updateRequest(id, {
         statusCode: proxyRes.statusCode || 0,
         responseHeaders: { ...proxyRes.headers },
-        responseBody: bodyChunks.length > 0 ? Buffer.concat(bodyChunks) : null,
+        responseBody:
+          captureResponseBody && bodyChunks.length > 0 ? Buffer.concat(bodyChunks) : null,
         responseBodyTruncated: truncated,
         duration: startTime ? Date.now() - startTime : null,
       });
@@ -662,7 +714,7 @@ export async function createMainProxy({
                   return null;
                 }
                 try {
-                  return buf.toString('utf-8').slice(0, MAX_BODY_CAPTURE_BYTES);
+                  return buf.toString('utf-8').slice(0, store.maxBodyCaptureBytes);
                 } catch {
                   return '[binary content]';
                 }
@@ -673,9 +725,8 @@ export async function createMainProxy({
                   ...request,
                   requestBody: safeStringify(request.requestBody),
                   responseBody: safeStringify(request.responseBody),
-                  requestBodyTruncated: (request.requestBody?.length ?? 0) > MAX_BODY_CAPTURE_BYTES,
-                  responseBodyTruncated:
-                    (request.responseBody?.length ?? 0) > MAX_BODY_CAPTURE_BYTES,
+                  requestBodyTruncated: request.requestBodyTruncated,
+                  responseBodyTruncated: request.responseBodyTruncated,
                 }),
               );
               return;
@@ -835,7 +886,7 @@ export async function createMainProxy({
       }
 
       const wsId = crypto.randomUUID();
-      if (store) {
+      if (store && inspectRequests) {
         const wsHost = incomingUrl.hostname.split('.')[0];
         store.trackHost(wsHost, incomingUrl.hostname, registry.has(wsHost));
         store.addRequest({

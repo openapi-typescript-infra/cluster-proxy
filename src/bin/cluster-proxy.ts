@@ -26,7 +26,7 @@ import { createStoreDestination } from '../tui/pinoDestination.js';
 import { App } from '../tui/App.js';
 
 const argv = minimist(process.argv.slice(2), {
-  boolean: ['pretty', 'tui', 'usePortForwarding'],
+  boolean: ['pretty', 'tui', 'usePortForwarding', 'inspectRequests'],
   string: [
     'config',
     'key',
@@ -40,6 +40,9 @@ const argv = minimist(process.argv.slice(2), {
     'clusterSuffix',
     'registerHost',
     'name',
+    'maxStoredRequests',
+    'maxBodyCaptureBytes',
+    'bodyCaptureContentTypes',
   ],
   default: {
     pretty: true,
@@ -64,6 +67,10 @@ const argv = minimist(process.argv.slice(2), {
   registerHost?: string;
   usePortForwarding?: boolean;
   name?: string;
+  inspectRequests?: boolean;
+  maxStoredRequests?: string;
+  maxBodyCaptureBytes?: string;
+  bodyCaptureContentTypes?: string | string[];
 };
 const hasFlag = (name: string) =>
   process.argv.slice(2).some((arg) => arg === `--${name}` || arg === `--no-${name}`);
@@ -112,6 +119,23 @@ if (argv.config) {
   if (hasFlag('usePortForwarding')) {
     config.usePortForwarding = argv.usePortForwarding;
   }
+  if (hasFlag('inspectRequests')) {
+    config.inspectRequests = argv.inspectRequests;
+  }
+  if (argv.maxStoredRequests !== undefined) {
+    config.maxStoredRequests = Number(argv.maxStoredRequests);
+  }
+  if (argv.maxBodyCaptureBytes !== undefined) {
+    config.maxBodyCaptureBytes = Number(argv.maxBodyCaptureBytes);
+  }
+  if (argv.bodyCaptureContentTypes) {
+    config.bodyCaptureContentTypes = Array.isArray(argv.bodyCaptureContentTypes)
+      ? argv.bodyCaptureContentTypes
+      : argv.bodyCaptureContentTypes
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean);
+  }
 } else {
   // Build config entirely from CLI args
   const zones = argv.zone ? (Array.isArray(argv.zone) ? argv.zone : [argv.zone]) : undefined;
@@ -141,6 +165,19 @@ if (argv.config) {
     clusterSuffix: argv.clusterSuffix,
     registerHost: argv.registerHost,
     usePortForwarding: argv.usePortForwarding,
+    inspectRequests: argv.inspectRequests,
+    maxStoredRequests:
+      argv.maxStoredRequests !== undefined ? Number(argv.maxStoredRequests) : undefined,
+    maxBodyCaptureBytes:
+      argv.maxBodyCaptureBytes !== undefined ? Number(argv.maxBodyCaptureBytes) : undefined,
+    bodyCaptureContentTypes: argv.bodyCaptureContentTypes
+      ? Array.isArray(argv.bodyCaptureContentTypes)
+        ? argv.bodyCaptureContentTypes
+        : argv.bodyCaptureContentTypes
+            .split(',')
+            .map((s) => s.trim())
+            .filter(Boolean)
+      : undefined,
     host: argv.host,
     advertisedHost: argv.advertisedHost,
     httpPort: argv.httpPort ? Number(argv.httpPort) : undefined,
@@ -151,10 +188,16 @@ if (argv.config) {
 }
 
 const useTui = argv.pretty !== false && argv.tui !== false && !!process.stdout.isTTY;
-const store = new ProxyStore();
+const useInspectorStore = useTui || config.inspectRequests === true;
+const store = useInspectorStore
+  ? new ProxyStore({
+      maxStoredRequests: config.maxStoredRequests,
+      maxBodyCaptureBytes: config.maxBodyCaptureBytes,
+    })
+  : undefined;
 
 const logger = useTui
-  ? pino({ level: config.logLevel || 'debug' }, createStoreDestination(store))
+  ? pino({ level: config.logLevel || 'debug' }, createStoreDestination(store as ProxyStore))
   : pino({
       ...(argv.pretty
         ? {
@@ -296,7 +339,7 @@ createMainProxy({
 })
   .then((proxyInstance) => {
     runningProxy = proxyInstance;
-    if (useTui) {
+    if (useTui && store) {
       const { waitUntilExit } = render(
         React.createElement(App, { store, host, httpPort, httpsPort, name: proxyName }),
         {

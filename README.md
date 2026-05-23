@@ -98,6 +98,9 @@ All options can be set in a JSON config file passed via `--config`:
     "endpoint": "http://auth.mc.svc.cluster.local/token-check",
     "headerNames": ["x-auth-token"]
   },
+  "inspectRequests": true,
+  "maxStoredRequests": 500,
+  "maxBodyCaptureBytes": 65536,
   "host": "127.0.0.1",
   "advertisedHost": "127.0.0.1",
   "httpPort": 9080,
@@ -122,6 +125,10 @@ All options can be set in a JSON config file passed via `--config`:
 | `auth.cookieName` | no | — | Cookie to look for on incoming requests. Auth is disabled if `auth` is not set. |
 | `auth.endpoint` | no | — | URL to call for token exchange when the cookie is present. |
 | `auth.headerNames` | no | — | Response headers to extract from the auth endpoint and forward upstream. |
+| `inspectRequests` | no | `true` when the TUI is enabled | Capture request metadata for the TUI/inspector. Non-TUI mode does not retain request history unless this is explicitly set to `true`. |
+| `maxStoredRequests` | no | `500` | Maximum inspected requests retained in memory. Set to `0` to disable retention. |
+| `maxBodyCaptureBytes` | no | `65536` | Maximum request or response body bytes captured per inspected request. Set to `0` to capture metadata only. |
+| `bodyCaptureContentTypes` | no | text, JSON, XML, form content | Response content types eligible for body capture. Use entries like `"text/"`, `"application/json"`, or `"+json"`. |
 | `host` | no | `127.0.0.1` | Bind address. |
 | `advertisedHost` | no | `host`, or `127.0.0.1` when `host` is `0.0.0.0` | Address returned by the built-in DNS server for handled zones. Useful when binding to `0.0.0.0` but advertising a loopback alias such as `127.0.0.2`. |
 | `httpPort` | no | `9080` | HTTP listen port. |
@@ -148,6 +155,10 @@ CLI arguments override config file values.
 --key <path>          TLS key file path
 --cert <path>         TLS cert file path
 --logLevel <level>    Pino log level            (default: debug)
+--no-inspectRequests  Disable request inspection
+--maxStoredRequests <n>       Retained inspected requests (default: 500)
+--maxBodyCaptureBytes <bytes> Body capture cap per request/response (default: 65536)
+--bodyCaptureContentTypes <list> Comma-separated response content types to capture
 --no-pretty           Disable pretty-printed logs
 --tui false           Disable the terminal UI
 ```

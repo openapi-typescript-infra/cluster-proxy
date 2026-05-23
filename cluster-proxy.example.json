@@ -24,6 +24,10 @@
       "users": "users-service"
     }
   },
+  "inspectRequests": true,
+  "maxStoredRequests": 500,
+  "maxBodyCaptureBytes": 65536,
+  "bodyCaptureContentTypes": ["text/", "application/json", "+json"],
   "host": "127.0.0.1",
   "advertisedHost": "127.0.0.1",
   "httpPort": 9080,

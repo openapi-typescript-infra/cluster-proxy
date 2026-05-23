@@ -111,6 +111,31 @@ export interface ClusterProxyConfig {
    */
   suppressLogPaths?: string[];
 
+  /**
+   * Enables request metadata capture for the TUI/inspector.
+   * Defaults to true when the TUI store is enabled.
+   */
+  inspectRequests?: boolean;
+
+  /**
+   * Maximum number of inspected requests retained in memory.
+   * Defaults to 500.
+   */
+  maxStoredRequests?: number;
+
+  /**
+   * Maximum request or response body bytes captured per inspected request.
+   * Defaults to 64 KiB. Set to 0 to disable body capture.
+   */
+  maxBodyCaptureBytes?: number;
+
+  /**
+   * Response content types eligible for body capture.
+   * Request bodies and responses without a content type are still capped by
+   * maxBodyCaptureBytes. Defaults to common text/JSON/XML/form content.
+   */
+  bodyCaptureContentTypes?: string[];
+
   /** Network binding configuration (overridable via CLI args) */
   host?: string;
   /**

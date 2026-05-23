@@ -2,9 +2,22 @@ import { EventEmitter } from 'events';
 
 import type { CapturedRequest, SeenHost, LogEntry, RegistryEntry } from './types.ts';
 
-const MAX_STORED_REQUESTS = 2000;
+export const DEFAULT_MAX_STORED_REQUESTS = 500;
 const MAX_LOG_ENTRIES = 500;
-export const MAX_BODY_CAPTURE_BYTES = 256 * 1024;
+export const DEFAULT_MAX_BODY_CAPTURE_BYTES = 64 * 1024;
+export const MAX_BODY_CAPTURE_BYTES = DEFAULT_MAX_BODY_CAPTURE_BYTES;
+
+export interface ProxyStoreOptions {
+  maxStoredRequests?: number;
+  maxBodyCaptureBytes?: number;
+}
+
+function nonNegativeInteger(value: number | undefined, fallback: number): number {
+  if (value === undefined || !Number.isFinite(value)) {
+    return fallback;
+  }
+  return Math.max(0, Math.floor(value));
+}
 
 export class ProxyStore extends EventEmitter {
   requests: CapturedRequest[] = [];
@@ -12,9 +25,23 @@ export class ProxyStore extends EventEmitter {
   registry: RegistryEntry[] = [];
   logs: LogEntry[] = [];
   activeFilter: string | null = null;
+  readonly maxStoredRequests: number;
+  readonly maxBodyCaptureBytes: number;
 
   private pendingEvents = new Set<string>();
   private flushScheduled = false;
+
+  constructor(options: ProxyStoreOptions = {}) {
+    super();
+    this.maxStoredRequests = nonNegativeInteger(
+      options.maxStoredRequests,
+      DEFAULT_MAX_STORED_REQUESTS,
+    );
+    this.maxBodyCaptureBytes = nonNegativeInteger(
+      options.maxBodyCaptureBytes,
+      DEFAULT_MAX_BODY_CAPTURE_BYTES,
+    );
+  }
 
   private scheduleEmit(event: string) {
     this.pendingEvents.add(event);
@@ -31,9 +58,12 @@ export class ProxyStore extends EventEmitter {
   }
 
   addRequest(req: CapturedRequest): void {
+    if (this.maxStoredRequests === 0) {
+      return;
+    }
     this.requests.push(req);
-    if (this.requests.length > MAX_STORED_REQUESTS) {
-      this.requests.splice(0, this.requests.length - MAX_STORED_REQUESTS);
+    if (this.requests.length > this.maxStoredRequests) {
+      this.requests.splice(0, this.requests.length - this.maxStoredRequests);
     }
     this.scheduleEmit('requests');
   }
