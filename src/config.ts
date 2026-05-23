@@ -20,10 +20,16 @@ export interface ClusterProxyConfig {
   zones: string[];
 
   /**
-   * The primary zone used for registry URLs and certificate defaults.
+   * The primary zone used for certificate defaults.
    * Defaults to zones[0].
    */
   primaryZone?: string;
+
+  /**
+   * Hostname used when services register local ports with the registry.
+   * Defaults to primaryZone.
+   */
+  registerHost?: string;
 
   /**
    * Kubernetes namespace used when a service name has no explicit namespace.
@@ -125,6 +131,10 @@ export function loadConfig(configPath: string): ClusterProxyConfig {
 
 export function resolvedPrimaryZone(config: ClusterProxyConfig): string {
   return config.primaryZone || config.zones[0];
+}
+
+export function resolvedRegisterHost(config: ClusterProxyConfig): string {
+  return config.registerHost || resolvedPrimaryZone(config);
 }
 
 export function resolvedClusterTarget(config: ClusterProxyConfig) {

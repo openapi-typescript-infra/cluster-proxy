@@ -38,6 +38,7 @@ const argv = minimist(process.argv.slice(2), {
     'defaultNamespace',
     'clusterDomain',
     'clusterSuffix',
+    'registerHost',
     'name',
   ],
   default: {
@@ -60,6 +61,7 @@ const argv = minimist(process.argv.slice(2), {
   defaultNamespace?: string;
   clusterDomain?: string;
   clusterSuffix?: string;
+  registerHost?: string;
   usePortForwarding?: boolean;
   name?: string;
 };
@@ -104,6 +106,9 @@ if (argv.config) {
   if (argv.clusterSuffix) {
     config.clusterSuffix = argv.clusterSuffix;
   }
+  if (argv.registerHost) {
+    config.registerHost = argv.registerHost;
+  }
   if (hasFlag('usePortForwarding')) {
     config.usePortForwarding = argv.usePortForwarding;
   }
@@ -134,6 +139,7 @@ if (argv.config) {
     defaultNamespace: argv.defaultNamespace,
     clusterDomain: argv.clusterDomain,
     clusterSuffix: argv.clusterSuffix,
+    registerHost: argv.registerHost,
     usePortForwarding: argv.usePortForwarding,
     host: argv.host,
     advertisedHost: argv.advertisedHost,

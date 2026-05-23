@@ -65,13 +65,13 @@ sudo npx @openapi-typescript-infra/cluster-proxy \
  Registered?     Not registered
     │                │
     ▼                ▼
- localhost:PORT   hostname.clusterSuffix
+ registerHost:PORT hostname.clusterSuffix
  (from registry) (e.g. api.mc.svc.cluster.local)
 ```
 
 1. The DNS server resolves any hostname under your configured zones to the proxy's IP address.
 2. When a request arrives, the proxy extracts the first subdomain (e.g. `api` from `api.local.dev.mycompany.com`).
-3. If that name is in the local registry, the request routes to `localhost:<registered port>`.
+3. If that name is in the local registry, the request routes to `<registerHost>:<registered port>`.
 4. Otherwise it forwards to the cluster at `<hostname>.<clusterSuffix>`.
 
 ## Configuration
@@ -87,6 +87,7 @@ All options can be set in a JSON config file passed via `--config`:
   "clusterSuffix": ".mc.svc.cluster.local",
   "usePortForwarding": true,
   "primaryZone": "local.dev.mycompany.com",
+  "registerHost": "127.0.0.1",
   "certs": {
     "keyFile": "~/.certs/my.keyfile.pem",
     "certFile": "~/.certs/my.certfile.pem",
@@ -113,7 +114,8 @@ All options can be set in a JSON config file passed via `--config`:
 | `clusterDomain` | no | `svc.cluster.local` | Kubernetes cluster DNS domain appended after the namespace. Ignored when `clusterSuffix` is set. |
 | `usePortForwarding` | no | `false` | Use `kubectl port-forward` through the shell's active Kubernetes context for unregistered cluster fallback traffic. |
 | `name` | no | `"Cluster Proxy"` | Display name for the TUI logo and error pages. |
-| `primaryZone` | no | `zones[0]` | The zone used for registry URLs and default certificate paths. |
+| `primaryZone` | no | `zones[0]` | The zone used for default certificate paths. |
+| `registerHost` | no | `primaryZone` | Hostname used when services register local ports with the registry. |
 | `certs.keyFile` | no | `~/.certs/_wildcard.<primaryZone>.keyfile.pem` | Path to TLS key file. |
 | `certs.certFile` | no | `~/.certs/_wildcard.<primaryZone>.certfile.pem` | Path to TLS cert file. |
 | `certs.mkcertDomains` | no | `[primaryZone, "*.primaryZone"]` | Domains passed to `mkcert` when auto-generating certificates. |
@@ -136,6 +138,7 @@ CLI arguments override config file values.
 --zone <domain>       DNS zone (repeatable, e.g. --zone foo.com --zone bar)
 --clusterSuffix <s>   Cluster service suffix
 --usePortForwarding   Use kubectl port-forward for cluster fallback
+--registerHost <host> Hostname used for service registration targets
 --name <name>         Display name
 --host <ip>           Bind address              (default: 127.0.0.1)
 --advertisedHost <ip> DNS answer address        (default: bind host, or 127.0.0.1 for 0.0.0.0)
@@ -159,10 +162,17 @@ curl http://registry.local.dev.mycompany.com/register \
   -d '{"name": "my-api", "port": 8080, "protocol": "http"}'
 ```
 
-After registration, `my-api.local.dev.mycompany.com` routes to `localhost:8080`.
+After registration, `my-api.local.dev.mycompany.com` routes to `http://<registerHost>:8080`.
+The request can include `host` to override `registerHost` for that service, which is useful for services running in Docker or on another machine:
+
+```sh
+curl http://registry.local.dev.mycompany.com/register \
+  -H "Content-Type: application/json" \
+  -d '{"name": "my-api", "host": "host.docker.internal", "port": 8080, "protocol": "http"}'
+```
 
 - Services ending in `-web` automatically get a base name alias (e.g. registering `my-api-web` also creates a `my-api` route).
-- If a new service registers on the same port as an existing one, the old registration is replaced.
+- If a new service registers on the same host and port as an existing one, the old registration is replaced.
 - If the proxy gets `ECONNREFUSED` when forwarding to a registered service, it automatically unregisters and falls back to cluster routing.
 
 To unregister a service, send a DELETE to the same endpoint:
@@ -177,14 +187,14 @@ curl -X DELETE http://registry.local.dev.mycompany.com/register \
 
 The paired `-web`/base alias (if any) is removed automatically.
 
-You can optionally include `port` and/or `protocol` to guard against a stale instance unregistering a newer one. If supplied and they don't match the current registration, the request is ignored:
+You can optionally include `host`, `port`, and/or `protocol` to guard against a stale instance unregistering a newer one. If supplied and they don't match the current registration, the request is ignored:
 
 ```sh
-curl -X DELETE "http://registry.local.dev.mycompany.com/register/my-api?port=8080&protocol=http"
+curl -X DELETE "http://registry.local.dev.mycompany.com/register/my-api?host=host.docker.internal&port=8080&protocol=http"
 # or
 curl -X DELETE http://registry.local.dev.mycompany.com/register \
   -H "Content-Type: application/json" \
-  -d '{"name": "my-api", "port": 8080, "protocol": "http"}'
+  -d '{"name": "my-api", "host": "host.docker.internal", "port": 8080, "protocol": "http"}'
 ```
 
 ## Auth token exchange

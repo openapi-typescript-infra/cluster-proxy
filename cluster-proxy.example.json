@@ -4,6 +4,7 @@
   "defaultNamespace": "mc",
   "clusterDomain": "svc.cluster.local",
   "usePortForwarding": false,
+  "registerHost": "127.0.0.1",
   "certs": {
     "keyFile": "~/.certs/_wildcard.local.dev.mycompany.com.keyfile.pem",
     "certFile": "~/.certs/_wildcard.local.dev.mycompany.com.certfile.pem",

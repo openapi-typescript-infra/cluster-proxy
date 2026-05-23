@@ -8,7 +8,7 @@ import httpProxy from 'http-proxy';
 import type { Logger } from 'pino';
 
 import type { ClusterProxyConfig } from './config.js';
-import { resolvedClusterTarget, resolvedPrimaryZone } from './config.js';
+import { resolvedClusterTarget, resolvedRegisterHost } from './config.js';
 import { createDns } from './dnsServer.js';
 import { extAuth } from './ext-auth.js';
 import { PortForwardManager } from './portForward.js';
@@ -61,7 +61,7 @@ export async function createMainProxy({
 }) {
   const proxyName = config.name || 'Cluster Proxy';
   const logoText = figlet.textSync(proxyName, { font: 'Standard' });
-  const primaryZone = resolvedPrimaryZone(config);
+  const registerHost = resolvedRegisterHost(config);
   const { defaultNamespace, clusterDomain } = resolvedClusterTarget(config);
   const suppressLogPaths = config.suppressLogPaths ?? ['/_next'];
   const portForwards = config.usePortForwarding ? new PortForwardManager(logger) : undefined;
@@ -425,23 +425,31 @@ export async function createMainProxy({
                   name: string;
                   port: number;
                   protocol: 'http' | 'https';
+                  host?: string;
+                  hostname?: string;
                 };
-                // Remove any existing registrations using the same port
+                const registrationHost = data.host ?? data.hostname ?? registerHost;
+                const targetUrl = new URL(`${protocol}://${registrationHost}:${port}`);
+                // Remove any existing registrations using the same host and port
                 const portStr = String(port);
                 for (const [existingName, existingUrl] of registry.entries()) {
-                  if (existingUrl.port === portStr && existingName !== name) {
+                  if (
+                    existingUrl.hostname === targetUrl.hostname &&
+                    existingUrl.port === portStr &&
+                    existingName !== name
+                  ) {
                     logger.info(
-                      { name: existingName, port },
-                      'Removing previous registration on same port',
+                      { name: existingName, host: registrationHost, port },
+                      'Removing previous registration on same host and port',
                     );
                     registry.delete(existingName);
                   }
                 }
-                registry.set(name, new URL(`${protocol}://${primaryZone}:${port}`));
+                registry.set(name, targetUrl);
                 logger.info({ from: name, to: registry.get(name)?.toString() }, 'Registry updated');
                 if (name.endsWith('-web')) {
                   const baseName = name.replace(/-web$/, '');
-                  registry.set(baseName, new URL(`${protocol}://${primaryZone}:${port}`));
+                  registry.set(baseName, targetUrl);
                   logger.info(
                     { from: baseName, to: registry.get(name)?.toString() },
                     'Registry updated',
@@ -477,20 +485,30 @@ export async function createMainProxy({
               return removed;
             };
 
-            const finish = (name: string, expected?: { port?: number; protocol?: string }) => {
+            const finish = (
+              name: string,
+              expected?: { host?: string; port?: number; protocol?: string },
+            ) => {
               if (!name) {
                 res.statusCode = 400;
                 res.end('Missing name');
                 return;
               }
-              if (expected && (expected.port !== undefined || expected.protocol !== undefined)) {
+              if (
+                expected &&
+                (expected.host !== undefined ||
+                  expected.port !== undefined ||
+                  expected.protocol !== undefined)
+              ) {
                 const current = registry.get(name);
                 if (current) {
+                  const hostMismatch =
+                    expected.host !== undefined && expected.host !== current.hostname;
                   const portMismatch =
                     expected.port !== undefined && String(expected.port) !== current.port;
                   const protocolMismatch =
                     expected.protocol !== undefined && `${expected.protocol}:` !== current.protocol;
-                  if (portMismatch || protocolMismatch) {
+                  if (hostMismatch || portMismatch || protocolMismatch) {
                     logger.warn(
                       { name, expected, current: current.toString() },
                       'Ignoring unregister: host info does not match current registration',
@@ -523,9 +541,10 @@ export async function createMainProxy({
 
             if (pathname.startsWith('/register/')) {
               const name = decodeURIComponent(pathname.slice('/register/'.length));
+              const expectedHost = reqUrl.searchParams.get('host') ?? undefined;
               const port = parsePort(reqUrl.searchParams.get('port'));
               const protocol = reqUrl.searchParams.get('protocol') ?? undefined;
-              finish(name, { port, protocol });
+              finish(name, { host: expectedHost, port, protocol });
               return;
             }
 
@@ -539,15 +558,23 @@ export async function createMainProxy({
                   const data = body
                     ? (JSON.parse(body) as {
                         name?: string;
+                        host?: string;
+                        hostname?: string;
                         port?: number;
                         protocol?: string;
                       })
                     : null;
                   const name = data?.name ?? reqUrl.searchParams.get('name') ?? '';
+                  const expectedHost =
+                    data?.host ??
+                    data?.hostname ??
+                    reqUrl.searchParams.get('host') ??
+                    reqUrl.searchParams.get('hostname') ??
+                    undefined;
                   const port = parsePort(data?.port ?? reqUrl.searchParams.get('port'));
                   const protocol =
                     data?.protocol ?? reqUrl.searchParams.get('protocol') ?? undefined;
-                  finish(name, { port, protocol });
+                  finish(name, { host: expectedHost, port, protocol });
                 } catch (error) {
                   logger.error(error, 'Failed to parse request body');
                   res.statusCode = 400;

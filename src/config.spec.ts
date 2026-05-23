@@ -1,6 +1,11 @@
 import { describe, expect, test } from 'vitest';
 
-import { defaultCertPaths, expandHomePath, resolvedClusterTarget } from './config.ts';
+import {
+  defaultCertPaths,
+  expandHomePath,
+  resolvedClusterTarget,
+  resolvedRegisterHost,
+} from './config.ts';
 
 describe('expandHomePath', () => {
   test('expands a tilde-prefixed path', () => {
@@ -47,5 +52,26 @@ describe('resolvedClusterTarget', () => {
       defaultNamespace: 'development',
       clusterDomain: 'svc.cluster.local',
     });
+  });
+});
+
+describe('resolvedRegisterHost', () => {
+  test('defaults to the primary zone', () => {
+    expect(
+      resolvedRegisterHost({
+        zones: ['local.dev.mycompany.com'],
+        primaryZone: 'primary.local.dev.mycompany.com',
+      }),
+    ).toBe('primary.local.dev.mycompany.com');
+  });
+
+  test('uses registerHost when configured', () => {
+    expect(
+      resolvedRegisterHost({
+        zones: ['local.dev.mycompany.com'],
+        primaryZone: 'primary.local.dev.mycompany.com',
+        registerHost: '127.0.0.1',
+      }),
+    ).toBe('127.0.0.1');
   });
 });
