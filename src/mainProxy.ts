@@ -211,6 +211,47 @@ export async function createMainProxy({
     return undefined;
   }
 
+  function isLocalHostname(hostname: string) {
+    return hostname === 'localhost' || net.isIP(hostname) !== 0;
+  }
+
+  function authServiceName(hostname: string) {
+    const normalized = hostname.replace(/\.$/, '');
+    const clusterDomainSuffix = `.${clusterDomain}`;
+    if (normalized.endsWith(clusterDomainSuffix)) {
+      return normalized.slice(0, -clusterDomainSuffix.length);
+    }
+
+    const zone = config.zones.find((z) => normalized.endsWith(`.${z}`) || normalized === z);
+    if (zone && normalized !== zone) {
+      return normalized.slice(0, -(zone.length + 1));
+    }
+
+    return normalized;
+  }
+
+  function applyAuthEndpointPath(target: URL, endpoint: URL) {
+    const resolved = new URL(target.toString());
+    if (!resolved.port && endpoint.port) {
+      resolved.port = endpoint.port;
+    }
+    resolved.pathname = endpoint.pathname;
+    resolved.search = endpoint.search;
+    resolved.hash = endpoint.hash;
+    return resolved;
+  }
+
+  async function resolveAuthEndpoint(endpoint: URL) {
+    if (isLocalHostname(endpoint.hostname)) {
+      return endpoint;
+    }
+
+    const serviceName = authServiceName(endpoint.hostname);
+    const target =
+      registryLookup(serviceName) || (await resolveClusterTargetUrl(serviceName, endpoint));
+    return applyAuthEndpointPath(target, endpoint);
+  }
+
   /**
    * Build a cluster URL for a service name.
    * - Bare name ("myservice-api") → myservice-api.{defaultNamespace}.{clusterDomain}
@@ -430,7 +471,7 @@ export async function createMainProxy({
           return;
         }
         captureRequest(req, 'https', targetUrl, registry.has(incomingUrl.hostname.split('.')[0]));
-        extAuth(req, config)
+        extAuth(req, config, resolveAuthEndpoint)
           .then((headers) => {
             if (store && Object.keys(headers).length > 0) {
               const id = (req as unknown as Record<string, unknown>).__captureId as string;

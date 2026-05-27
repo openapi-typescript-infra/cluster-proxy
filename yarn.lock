@@ -581,6 +581,7 @@ __metadata:
     react: ^19.2.6
     tsx: ^4.22.3
     typescript: ^5.9.3
+    undici: ^8.3.0
     vitest: ^4.1.6
   bin:
     cluster-proxy: build/bin/cluster-proxy.js
@@ -5429,6 +5430,13 @@ __metadata:
   version: 7.22.0
   resolution: "undici@npm:7.22.0"
   checksum: 3eaad0283f946ce12d4aa70da49d23870fcab9a3de5ae0b2855710b58fece570b1675913268dfa8b97589385ff4fb706c004a0614c3b193b617475e7d0a34e3a
+  languageName: node
+  linkType: hard
+
+"undici@npm:^8.3.0":
+  version: 8.3.0
+  resolution: "undici@npm:8.3.0"
+  checksum: 97020acec79ab762248f606933d3f80306ca01690aa5f13ab210556fb9d09094a3b765e0f51f43f5bb825d2bb008d942e4c66bfd50307885b17acef251da72ff
   languageName: node
   linkType: hard
 
