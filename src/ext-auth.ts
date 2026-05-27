@@ -8,7 +8,7 @@ export async function extAuth(req: IncomingMessage, config: ClusterProxyConfig) 
   if (!auth) {
     return headers;
   }
-  const outgoing: Record<string, string> = {};
+  const outgoing: Record<string, string> = auth.headers || {};
   if (req.headers.cookie && req.headers.cookie.includes(auth.cookieName)) {
     outgoing.cookie = req.headers.cookie;
   }

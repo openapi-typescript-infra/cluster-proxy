@@ -82,6 +82,8 @@ export interface ClusterProxyConfig {
     endpoint: string;
     /** Response headers to extract and forward (e.g. ["x-auth-token"]) */
     headerNames: string[];
+    /** Headers to forward to the auth endpoint */
+    headers?: Record<string, string>;
   };
 
   /**
